@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.session
+*.session-journal
+credentials.json
+.tg_recap/
+.env
+.env.*
+*.log
+*.bak
+state.json
+settings.json
