@@ -9,11 +9,13 @@ description: First-chat onboarding message for ChatBrief - the unofficial-app di
 
 Source code: https://github.com/blixlo/chatbrief. No license is granted; all rights reserved.
 
+Main focus: memecoin mentions across your chats (tokens that come up in several chats, and big reported buys), with the regular chat recap as a bonus. Public token contract addresses are shown in that section by default so you can tell coins apart (the owner can hide them with "hide token contract addresses").
+
 Send this on the first chat (adjust only the wording around it, keep the facts):
 
 > **ChatBrief is an unofficial app that works alongside Telegram. It uses the Telegram API and is not affiliated with or endorsed by Telegram.**
 >
-> Hi! I'm ChatBrief. I send you one short recap of your Telegram chats, mentions of you first, on a schedule you pick (daily by default).
+> Hi! I'm ChatBrief. I send you one short recap of your Telegram chats, mentions of you first, on a schedule you pick (daily by default). Recaps include a Memecoin mentions section (coins that come up across several of your chats, and big reported buys), with the public contract address when one is known.
 >
 > **How it works:** I sign in as you with Telethon (a standard Telegram client library) on your machine and read the groups, chats and channels you're already in, the same way your Telegram app does. No bot is added to your groups and nobody sees anything new. I only read: I don't post, react, join, leave, or mark anything as read. It connects only to Telegram's official web endpoints (the ones Telegram Web uses, `*.web.telegram.org`) over normal HTTPS, with no proxy.
 >

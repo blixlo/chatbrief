@@ -13,7 +13,8 @@ import sys
 from . import collect, config
 
 BOOL_FIELDS = {"include-muted": "include_muted", "include-archived": "include_archived",
-               "include-dms": "include_dms", "collapse-alert-bots": "collapse_alert_bots"}
+               "include-dms": "include_dms", "collapse-alert-bots": "collapse_alert_bots",
+               "memecoin-show-ca": "memecoin_show_ca"}
 TRUE = {"on", "true", "yes", "1", "y"}
 FALSE = {"off", "false", "no", "0", "n"}
 NUM_FIELDS = {"memecoin-buy-sol": "memecoin_buy_sol", "memecoin-buy-usd": "memecoin_buy_usd"}
@@ -54,6 +55,7 @@ def show_lines(cfg) -> list[str]:
         "Priority keywords: " + (", ".join(cfg.priority_keywords) if cfg.priority_keywords else "none"),
         f"Memecoin buy alerts: {_fmt_sol(cfg.memecoin_buy_sol)} or {_fmt_usd(cfg.memecoin_buy_usd)} (as reported)",
         "Memecoin ticker stoplist: " + (", ".join(cfg.memecoin_ticker_stop) or "none"),
+        f"Memecoin contract addresses: {_onoff(cfg.memecoin_show_ca)}",
         "Chat rules: " + ("; ".join(f"{r['title']}: {r['rule']}" for r in rules) if rules else "none"),
     ]
 
@@ -106,7 +108,11 @@ def cmd_set(args, out=None, err=None) -> int:
     try:
         if name in BOOL_FIELDS:
             setattr(cfg, BOOL_FIELDS[name], _parse_bool(value))
-            msg = f"{name.replace('-', ' ').capitalize()}: {_onoff(getattr(cfg, BOOL_FIELDS[name]))}."
+            on = _onoff(getattr(cfg, BOOL_FIELDS[name]))
+            if name == "memecoin-show-ca":
+                msg = f"Memecoin contract addresses: {on}."
+            else:
+                msg = f"{name.replace('-', ' ').capitalize()}: {on}."
         elif name == "length":
             cfg.length = value.casefold()
             msg = f"Recap length: {cfg.length}."

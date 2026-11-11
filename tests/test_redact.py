@@ -61,3 +61,17 @@ def test_tracking_query_and_x_status_links_stripped():
     assert "[link removed]" in out
     leftover = "see [id removed]?a=track&s=20 end"
     assert "track" not in redact(leftover) and "?a=" not in redact(leftover)
+
+
+def test_keep_addresses_preserves_listed_cas_only():
+    ca = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+    evm = "0x1111111111111111111111111111111111111111"
+    other = "0x2222222222222222222222222222222222222222"
+    text = f"token CA `{ca}` and wallet {evm} call +1 555 010 9999 also {other}"
+    out = redact(text, keep_addresses=[ca])
+    assert ca in out
+    assert evm not in out and other not in out
+    assert "555 010 9999" not in out
+    assert "[address removed]" in out and "[phone removed]" in out
+    # default redact still strips the CA
+    assert ca not in redact(text)

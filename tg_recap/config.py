@@ -44,6 +44,7 @@ SCHEMA = {
     "memecoin_buy_sol": ((int, float), "reported SOL buy threshold (default 10)"),
     "memecoin_buy_usd": ((int, float), "reported USD buy threshold (default 2000)"),
     "memecoin_ticker_stop": (list, "extra tickers to ignore in Memecoin mentions"),
+    "memecoin_show_ca": (bool, "show public token CAs in Memecoin mentions (default on)"),
 }
 
 
@@ -67,6 +68,7 @@ class Config:
     memecoin_buy_sol: float = 10.0
     memecoin_buy_usd: float = 2000.0
     memecoin_ticker_stop: list = field(default_factory=list)
+    memecoin_show_ca: bool = True
 
     def validate(self) -> "Config":
         for name, (typ, _desc) in SCHEMA.items():

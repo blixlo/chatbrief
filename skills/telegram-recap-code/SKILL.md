@@ -165,7 +165,7 @@ if __name__ == "__main__":
 ## Files
 
 ### file: README.md
-sha256: 485ff185f9927c76d43fd341ac18a0ff5e18fa5bb7e142b74819a0e452db6060
+sha256: aa24d06af4f2ccdb51d242ad5577a54a9f8dcb2fc6e7dbe6ff1f6f1a0b56903a
 ~~~~~
 # ChatBrief
 
@@ -175,7 +175,7 @@ sha256: 485ff185f9927c76d43fd341ac18a0ff5e18fa5bb7e142b74819a0e452db6060
 
 - Telegram API Terms section 1.5 restricts using Telegram data for AI; an AI-written recap may fall under it, so read the terms and accept the risk yourself (`consent accept`, see below).
 - Read-only: it never sends, posts, reacts or marks anything read in Telegram.
-- Main focus: memecoin mentions across your chats (tokens seen in several chats, big reported buys), plus a general chat recap.
+- Main focus: memecoin mentions across your chats (tokens seen in several chats, big reported buys, with the public contract address when one is known), plus a general chat recap.
 - Install: `python -m venv .venv && .venv/bin/pip install -r requirements.txt`, then `.venv/bin/python -m tg_recap --help`.
 - Recap only, not financial advice.
 
@@ -244,13 +244,14 @@ It never marks messages as read, so your chats stay unread in your own apps.
 Header with both dates and a short zone label (`ChatBrief · Nov 10, 3:20 AM to Nov 11, 3:20 AM PT`), then:
 
 1. **Needs you:** replies to your own messages, @mentions of you (Telegram mention entities, or `@yourname` typed as plain text), and any message containing one of your priority keywords (not from bots). Posts made as your own channel never count as you. Each shows the sender and one clean sentence, cut at a word boundary with an ellipsis.
-2. **Conversations:** what happened, what was decided, dates. With `collect`, the agent writes these in plain sentences from trimmed messages; `run` prints a sentence-style fallback.
-3. **Alert feeds:** automated feeds collapse to one line each, below the conversations (e.g. `Whale Watch: 90 whale alerts, mostly ABC and XYZ`). A feed is a DM with a bot, a chat whose new messages all came from bots (even one), a chat where bots sent at least 60% of 3+ new messages, or a chat where one sender sent at least 80% of 5+ messages that look templated. A bot posting in a group shows once, tied to that group (`Lab Group: 1 trending alert from Some Bot (TI)`); the same alerts in its DM aren't repeated. The noun comes from the messages (trending alert, new listing, whale alert, buy/sell alert, alert, automated post), not the bot's name. Tickers are `$TICKER` or plain ALL-CAPS words of 2-10 characters; anything that looks like an address or a fragment of one is skipped. Bot cards are summarised (`Trending alert (TI)`), never quoted: tree glyphs (├ └ │) and raw stat lines are stripped, and text is cut only at a sentence or word boundary. Turn off with `settings set collapse-alert-bots off`.
-4. **Also active:** muted chats with a count (on by default). **Count only:** chats you set to count-only.
-5. `N other chats had no new messages.` A chat with new messages is never counted as quiet.
-6. `Recap only, not financial advice.` only when market or crypto chats appear.
+2. **Memecoin mentions:** tokens that show up in 2+ chats (or 5+ times in one chat from 2+ people), or that have two or more reported buys at or above the threshold (default 10 SOL or $2,000). Each line shows the ticker and, by default, the most-seen public contract address in a code span (so you can tell coins apart), plus mention counts and any big reported buy. Hide addresses with `settings set memecoin-show-ca off`.
+3. **Conversations:** what happened, what was decided, dates. With `collect`, the agent writes these in plain sentences from trimmed messages; `run` prints a sentence-style fallback.
+4. **Alert feeds:** automated feeds collapse to one line each, below the conversations (e.g. `Whale Watch: 90 whale alerts, mostly ABC and XYZ`). A feed is a DM with a bot, a chat whose new messages all came from bots (even one), a chat where bots sent at least 60% of 3+ new messages, or a chat where one sender sent at least 80% of 5+ messages that look templated. A bot posting in a group shows once, tied to that group (`Lab Group: 1 trending alert from Some Bot (TI)`); the same alerts in its DM aren't repeated. The noun comes from the messages (trending alert, new listing, whale alert, buy/sell alert, alert, automated post), not the bot's name. Tickers are `$TICKER` or plain ALL-CAPS words of 2-10 characters; anything that looks like an address or a fragment of one is skipped. Bot cards are summarised (`Trending alert (TI)`), never quoted: tree glyphs (├ └ │) and raw stat lines are stripped, and text is cut only at a sentence or word boundary. Turn off with `settings set collapse-alert-bots off`.
+5. **Also active:** muted chats with a count (on by default). **Count only:** chats you set to count-only.
+6. `N other chats had no new messages.` A chat with new messages is never counted as quiet.
+7. `Recap only, not financial advice.` only when market or crypto chats appear.
 
-Length (`short`, `standard`, `detailed`) sets the caps: characters per message (200/300/500), messages per chat (15/30/60), total characters (6k/15k/40k) and chats shown (6/10/20). Contract addresses, wallet-like strings, t.me links, phone numbers and numeric IDs are removed from the text.
+Length (`short`, `standard`, `detailed`) sets the caps: characters per message (200/300/500), messages per chat (15/30/60), total characters (6k/15k/40k) and chats shown (6/10/20). In conversations and other recap text, wallet-like strings, t.me links, phone numbers and numeric IDs are removed. Public token contract addresses are shown only in the Memecoin mentions section (off with `settings set memecoin-show-ca off`). Personal wallet addresses stay hidden.
 
 ## Telegram API terms (section 1.5) and consent
 
@@ -273,7 +274,7 @@ This is an AI agent that reads your chats to write recaps, so before sign-in it 
 
 ## Settings
 
-`~/.tg_recap/settings.json` (0600, folder 0700), validated with defaults: `include_muted` true, `include_archived` false, `include_dms` true, `length` standard, `collapse_alert_bots` true, `priority_keywords` empty, `frequency`/`timezone` (stored for the schedule; the code uses the timezone), and per-chat rules stored by an internal salted chat key with the title. Chat titles for matching come from the last recap run (kept in `state.json`, titles only). Raw Telegram IDs are never stored or shown. An older `config.json` is read once if `settings.json` doesn't exist yet. See `docs/sample_recap_v0.1.5.md` for a synthetic example.
+`~/.tg_recap/settings.json` (0600, folder 0700), validated with defaults: `include_muted` true, `include_archived` false, `include_dms` true, `length` standard, `collapse_alert_bots` true, `priority_keywords` empty, `memecoin_show_ca` true, `memecoin_buy_sol` 10, `memecoin_buy_usd` 2000, `frequency`/`timezone` (stored for the schedule; the code uses the timezone), and per-chat rules stored by an internal salted chat key with the title. Chat titles for matching come from the last recap run (kept in `state.json`, titles only). Raw Telegram IDs are never stored or shown. An older `config.json` is read once if `settings.json` doesn't exist yet. See `docs/sample_recap_v0.1.5.md` for a synthetic example.
 
 ## Retention (this code's own cache)
 
@@ -1371,7 +1372,7 @@ async def collect(client, cfg, state: dict, now: datetime | None = None, *,
 ~~~~~
 
 ### file: tg_recap/config.py
-sha256: 9cb9faefa2d034713defd18dc5ce61ad84613a44d97752542f41db406937a588
+sha256: 466c266643c4eb3942381e5d48386505ff040e3e1d93c7a976ba1c6e588e7ff6
 ~~~~~
 """User settings in ~/.tg_recap/settings.json (0600, folder 0700).
 
@@ -1419,6 +1420,7 @@ SCHEMA = {
     "memecoin_buy_sol": ((int, float), "reported SOL buy threshold (default 10)"),
     "memecoin_buy_usd": ((int, float), "reported USD buy threshold (default 2000)"),
     "memecoin_ticker_stop": (list, "extra tickers to ignore in Memecoin mentions"),
+    "memecoin_show_ca": (bool, "show public token CAs in Memecoin mentions (default on)"),
 }
 
 
@@ -1442,6 +1444,7 @@ class Config:
     memecoin_buy_sol: float = 10.0
     memecoin_buy_usd: float = 2000.0
     memecoin_ticker_stop: list = field(default_factory=list)
+    memecoin_show_ca: bool = True
 
     def validate(self) -> "Config":
         for name, (typ, _desc) in SCHEMA.items():
@@ -2757,9 +2760,9 @@ def serve(port: int = DEFAULT_PORT, backend=None) -> int:
 ~~~~~
 
 ### file: tg_recap/memecoin.py
-sha256: 1a004a4d73455a4c042c548edbbea916b7fcc05aeb467598fc9afd3e61dd0d5e
+sha256: 8034073e53c5c78378a4453561c5a621ce8db1614e338c425952c622a6bfd41b
 ~~~~~
-"""Detect memecoin tickers, map CAs to names, count mentions, flag reported buys. No CAs in output."""
+"""Detect memecoin tickers, map CAs to names, count mentions, flag reported buys."""
 from __future__ import annotations
 
 import re
@@ -2846,7 +2849,7 @@ def tickers_in(text: str, extra_stop: set[str] | None = None) -> list[str]:
 
 
 def contracts_in(text: str) -> list[str]:
-    """Canonical CA strings (EVM lowercased, Solana as written). Never shown."""
+    """Canonical CA strings (EVM lowercased, Solana as written)."""
     found: list[str] = []
     for m in _EVM.finditer(text or ""):
         found.append(m.group(0).lower())
@@ -2854,6 +2857,76 @@ def contracts_in(text: str) -> list[str]:
     for m in _SOL.finditer(stripped):
         found.append(m.group(0))
     return list(dict.fromkeys(found))
+
+
+_WALLET_LEFT = re.compile(
+    r"\b(?:wallets?|buyers?|traders?|holders?|from|by|sender|signer|"
+    r"send(?:ing)?\s+to|sent\s+to|deposit(?:ed|s|ing)?(?:\s+to)?)\s*[:#=]?\s*$",
+    re.I,
+)
+_WALLET_RIGHT = re.compile(r"^\s*(?:bought|sold|swapped|buys|sells|buying|selling)\b", re.I)
+_TOKEN_LEFT = re.compile(
+    r"\b(?:(?:token|contract)\s+)?(?:ca|contract|address|addr|mint|token)s?\s*[:#=]?\s*$",
+    re.I,
+)
+_TOKEN_HOSTS = ("dexscreener.com/", "pump.fun/", "birdeye.so/", "solscan.io/")
+
+
+def _addr_spans(text: str, addr: str):
+    t = text or ""
+    if addr.startswith("0x"):
+        for m in _EVM.finditer(t):
+            if m.group(0).lower() == addr.lower():
+                yield m.start(), m.end()
+        return
+    start = 0
+    while True:
+        i = t.find(addr, start)
+        if i < 0:
+            return
+        yield i, i + len(addr)
+        start = i + 1
+
+
+def _wallet_context(text: str, addr: str) -> bool:
+    t = text or ""
+    for start, end in _addr_spans(t, addr):
+        if _WALLET_LEFT.search(t[:start]) or _WALLET_RIGHT.search(t[end:]):
+            return True
+    return False
+
+
+def _in_token_url(text: str, addr: str) -> bool:
+    t = text or ""
+    for host in _TOKEN_HOSTS:
+        if re.search(re.escape(host) + r"\S*" + re.escape(addr), t, re.I):
+            return True
+    return False
+
+
+def _near_ticker(text: str, start: int, end: int, extra=None, window: int = 80) -> bool:
+    lo, hi = max(0, start - window), min(len(text), end + window)
+    return bool(tickers_in(text[lo:hi], extra))
+
+
+def token_context(text: str, addr: str, extra=None) -> bool:
+    """True when addr looks like a token CA, not a personal wallet."""
+    if (addr or "").lower().endswith("pump"):
+        return True
+    t = text or ""
+    if _in_token_url(t, addr):
+        return True
+    if _wallet_context(t, addr):
+        return False
+    for start, end in _addr_spans(t, addr):
+        if _TOKEN_LEFT.search(t[:start]) or _near_ticker(t, start, end, extra):
+            return True
+    return False
+
+
+def token_cas_in(text: str, extra=None) -> list[str]:
+    """CAs in this text that appear in token context (label, token link, ticker, or *pump)."""
+    return [ca for ca in contracts_in(text) if token_context(text, ca, extra)]
 
 
 def _parse_num(num: str, suffix: str | None = None) -> float:
@@ -3008,10 +3081,13 @@ def _hits_from_records(records: list, cfg=None) -> list[dict]:
         for m in kept:
             text = m.get("text") or ""
             toks = tickers_in(text, extra)
-            extracted.append((toks, contracts_in(text), parse_buys(text), names_for(text, toks),
+            all_cas = contracts_in(text)
+            group_cas = [ca for ca in all_cas if not _wallet_context(text, ca)]
+            show_cas = [ca for ca in group_cas if token_context(text, ca, extra)]
+            extracted.append((toks, group_cas, show_cas, parse_buys(text), names_for(text, toks),
                               _tableish(text, toks)))
         for i, m in enumerate(kept):
-            tickers, cas, buys, names, table = extracted[i]
+            tickers, cas, show_cas, buys, names, table = extracted[i]
             tickers = _associate(kept, i, cas, tickers, extra)
             if not tickers and not cas:
                 continue
@@ -3019,11 +3095,13 @@ def _hits_from_records(records: list, cfg=None) -> list[dict]:
                     "ts": m.get("ts"), "table": table}
             if not tickers and cas:
                 for ca in cas:
-                    hits.append({**base, "ticker": None, "name": None, "cas": [ca], "buys": buys})
+                    hits.append({**base, "ticker": None, "name": None, "cas": [ca],
+                                 "show_cas": [ca] if ca in show_cas else [], "buys": buys})
                 continue
             for tok in tickers:
                 hits.append({**base, "ticker": tok, "name": names.get(tok),
                              "cas": list(cas) if len(tickers) == 1 else [],
+                             "show_cas": list(show_cas) if len(tickers) == 1 else [],
                              "buys": buys if len(tickers) == 1 else []})
     return hits
 
@@ -3092,9 +3170,34 @@ def _junk_short(group: list[dict], ticker: str) -> bool:
     return 2 <= len(core) <= 3 and group and all(h.get("table") for h in group)
 
 
+def _show_ca_enabled(cfg=None) -> bool:
+    if cfg is None:
+        return True
+    return bool(getattr(cfg, "memecoin_show_ca", True))
+
+
+def _ca_fields(group: list[dict], show_ca: bool) -> dict:
+    all_cas = [ca for h in group for ca in h["cas"]]
+    displayable = {ca for h in group for ca in (h.get("show_cas") or [])}
+    if not any(h.get("ticker") for h in group):
+        displayable.update(ca for ca, n in Counter(all_cas).items() if n >= 2)
+    counts = Counter(ca for ca in all_cas if ca in displayable)
+    out = {
+        "address_sightings": len(all_cas),
+        "distinct_addresses": len(set(all_cas)),
+    }
+    if show_ca and counts:
+        top, top_n = counts.most_common(1)[0]
+        out["ca"] = top
+        out["ca_sightings"] = top_n
+        out["other_cas"] = len(counts) - 1
+    return out
+
+
 def mentions_from_records(records: list, cfg=None) -> list[dict]:
-    """Tokens that cross a mention or big-buy threshold. No CAs or ids."""
+    """Tokens that cross a mention or big-buy threshold. Public CAs included when enabled."""
     rows = []
+    show_ca = _show_ca_enabled(cfg)
     for group in _group_hits(_hits_from_records(records, cfg)):
         flagged = flagged_buys([b for h in group for b in h["buys"]], cfg)
         if not _qualifies(group, cfg):
@@ -3103,18 +3206,17 @@ def mentions_from_records(records: list, cfg=None) -> list[dict]:
         if _blocked(label.lstrip("$")) or _junk_short(group, label):
             continue
         chats = list(dict.fromkeys(h["chat"] for h in group))
-        cas = [ca for h in group for ca in h["cas"]]
         times = [h["ts"] for h in group if h["ts"] is not None]
-        rows.append({
+        row = {
             "ticker": label,
             "mentions": len(group),
             "chats": len(chats),
             "chat_names": chats,
-            "address_sightings": len(cas),
-            "distinct_addresses": len(set(cas)),
             "first_seen": _iso(min(times) if times else None),
             "biggest_buy": format_buy(flagged),
-        })
+        }
+        row.update(_ca_fields(group, show_ca))
+        rows.append(row)
     rows.sort(key=lambda r: (-r["chats"], -r["mentions"], r["first_seen"] or ""))
     return rows
 
@@ -3400,14 +3502,16 @@ class ReadOnlyClient:
 ~~~~~
 
 ### file: tg_recap/redact.py
-sha256: 16f26e2a1fb553b3648d11a558f6a1620302d63575e85c3d5a0e12cacc769b14
+sha256: eb6830510ed9cefb13228a142799c423daeee1474659563af7a8ba1ac2e62673
 ~~~~~
 """Strip identifiers and secrets from text before it leaves the collector.
 
-Removed: contract/wallet-looking strings (EVM 0x..., Solana/base58, Bitcoin),
-long hex blobs, t.me / telegram.me links (incl. invite links), x.com/twitter
-status links, URL query/fragment strings, phone numbers, numeric Telegram IDs,
-login/verification codes, passwords, and seed/recovery phrases.
+Removed: wallet-looking strings (EVM 0x..., Solana/base58, Bitcoin), long hex
+blobs, t.me / telegram.me links (incl. invite links), x.com/twitter status
+links, URL query/fragment strings, phone numbers, numeric Telegram IDs,
+login/verification codes, passwords, and seed/recovery phrases. Public token
+CAs may be left in place when the caller passes them in keep_addresses
+(Memecoin mentions only).
 """
 from __future__ import annotations
 
@@ -3452,13 +3556,35 @@ def _strip_urls(text: str) -> str:
     return _URL.sub(lambda m: re.split(r"[?#]", m.group(0), maxsplit=1)[0], text)
 
 
-def redact(text: str) -> str:
+def _hold_addresses(text: str, addresses) -> tuple[str, list[tuple[str, str]]]:
+    """Swap keep-list CAs for placeholders so later patterns can't chew them."""
+    held: list[tuple[str, str]] = []
+    out = text
+    for addr in addresses or []:
+        if not addr:
+            continue
+        variants = [addr]
+        if addr.lower() != addr:
+            variants.append(addr.lower())
+        for v in dict.fromkeys(variants):
+            if v and v in out:
+                token = f"KEEPCA{len(held)}MARKER"
+                out = out.replace(v, token)
+                held.append((token, v))
+    return out, held
+
+
+def redact(text: str, keep_addresses: list[str] | set[str] | None = None) -> str:
     if not text:
         return ""
-    out = _strip_urls(text)
+    out, held = _hold_addresses(text, keep_addresses)
+    out = _strip_urls(out)
     for pattern, repl in _SECRETS + _PATTERNS:
         out = pattern.sub(repl, out)
-    return _QUERY_AFTER_REDACT.sub("[link removed]", out)
+    out = _QUERY_AFTER_REDACT.sub("[link removed]", out)
+    for token, addr in held:
+        out = out.replace(token, addr)
+    return out
 
 
 _ADDRESSY = re.compile(r"\b0x[a-fA-F0-9]{40}\b|\b[1-9A-HJ-NP-Za-km-z]{32,44}\b")
@@ -3469,7 +3595,7 @@ def looks_like_address(text: str) -> bool:
 ~~~~~
 
 ### file: tg_recap/render.py
-sha256: 0126daaab7efe2be0f65dce5816c0bb5d998461858f1325a21794e90234fbf19
+sha256: deb0478c60ffa25f4f53752416a9b08239d0c1f2a78b8f064c2b6f64318f046a
 ~~~~~
 """Deterministic fallback recap, for when the agent can't write one itself.
 
@@ -3535,25 +3661,42 @@ def header(window: dict) -> str:
     return f"{PRODUCT_NAME} · {window_label(window)}"
 
 
+def _ca_label(item: dict) -> str | None:
+    ca = item.get("ca")
+    if not ca:
+        return None
+    n = int(item.get("ca_sightings") or 0)
+    bit = f"CA `{ca}`" + (f" (seen {n}×)" if n else "")
+    other = int(item.get("other_cas") or 0)
+    if other:
+        bit += f" +{other} other CA{'s' if other != 1 else ''} seen"
+    return bit
+
+
 def memecoin_line(item: dict, window: dict) -> str:
     tz = ZoneInfo(window["tz"])
     raw = item.get("first_seen") or ""
     first = datetime.fromisoformat(raw).astimezone(tz) if raw else None
     n, c = int(item.get("mentions") or 0), int(item.get("chats") or 0)
     parts = [f"{n} mention{'s' if n != 1 else ''} in {c} chat{'s' if c != 1 else ''}"]
-    sightings = int(item.get("address_sightings") or 0)
-    if sightings >= 2:
-        if int(item.get("distinct_addresses") or 1) > 1:
-            parts.append(f"addresses seen {sightings}×")
-        else:
-            parts.append(f"same address seen {sightings}×")
+    ca_bit = _ca_label(item)
+    label = item.get("ticker") or "Unnamed token"
+    if ca_bit:
+        label = ca_bit if label == "Unnamed token" else f"{label} · {ca_bit}"
+    else:
+        sightings = int(item.get("address_sightings") or 0)
+        if sightings >= 2:
+            if int(item.get("distinct_addresses") or 1) > 1:
+                parts.append(f"addresses seen {sightings}×")
+            else:
+                parts.append(f"same address seen {sightings}×")
     if first is not None:
         parts.append(f"first seen {_stamp(first)}")
     if item.get("biggest_buy"):
         parts.append(f"biggest reported buy: {item['biggest_buy']}")
     chats = ", ".join(item.get("chat_names") or [])
     tail = f" — {chats}" if chats else ""
-    return f"• {item.get('ticker') or 'Unnamed token'} — {', '.join(parts)}{tail}"
+    return f"• {label} — {', '.join(parts)}{tail}"
 
 
 def _names(people: list[str]) -> str:
@@ -3615,6 +3758,14 @@ def _counts(label: str, rows: list[dict]) -> str:
     return f"{label}: " + ", ".join(f"{r['name']} ({r['new_messages']} new)" for r in rows) + "."
 
 
+def _keep_cas(coins: list) -> list[str]:
+    return [c["ca"] for c in coins if c.get("ca")]
+
+
+def _redact_recap(text: str, coins: list) -> str:
+    return redact(text, keep_addresses=_keep_cas(coins))
+
+
 def render(digest: dict, bullets: int | None = None, memecoin_only: bool = False) -> str:
     needs = digest.get("needs_you", [])
     convs = digest.get("conversations", [])
@@ -3624,7 +3775,7 @@ def render(digest: dict, bullets: int | None = None, memecoin_only: bool = False
         if not coins:
             return ""
         lines = [header(digest["window"]), ""] + _coin_block(coins, digest["window"]) + ["", DISCLAIMER]
-        return redact("\n".join(lines).rstrip() + "\n")
+        return _redact_recap("\n".join(lines).rstrip() + "\n", coins)
     if not (needs or convs or feeds or coins):
         return ""
     if bullets is None:
@@ -3655,7 +3806,7 @@ def render(digest: dict, bullets: int | None = None, memecoin_only: bool = False
     lines += tail
     if digest.get("show_disclaimer") or coins:
         lines += ["", DISCLAIMER]
-    return redact("\n".join(lines).rstrip() + "\n")
+    return _redact_recap("\n".join(lines).rstrip() + "\n", coins)
 ~~~~~
 
 ### file: tg_recap/retention.py
@@ -3968,7 +4119,7 @@ def sample_text(now: datetime | None = None, tz: str = "America/Los_Angeles") ->
 ~~~~~
 
 ### file: tg_recap/settings_cli.py
-sha256: 1dcae3bc695ea3de60abd32096cd881d862fb267dc74c853f56090a0a2e49c1b
+sha256: c12dffc6b665ed034d7d1d3ed80d37b521556740f196f539014f21ead5df01b1
 ~~~~~
 """`settings show | set | chat | keyword` - local only, never contacts Telegram.
 
@@ -3985,7 +4136,8 @@ import sys
 from . import collect, config
 
 BOOL_FIELDS = {"include-muted": "include_muted", "include-archived": "include_archived",
-               "include-dms": "include_dms", "collapse-alert-bots": "collapse_alert_bots"}
+               "include-dms": "include_dms", "collapse-alert-bots": "collapse_alert_bots",
+               "memecoin-show-ca": "memecoin_show_ca"}
 TRUE = {"on", "true", "yes", "1", "y"}
 FALSE = {"off", "false", "no", "0", "n"}
 NUM_FIELDS = {"memecoin-buy-sol": "memecoin_buy_sol", "memecoin-buy-usd": "memecoin_buy_usd"}
@@ -4026,6 +4178,7 @@ def show_lines(cfg) -> list[str]:
         "Priority keywords: " + (", ".join(cfg.priority_keywords) if cfg.priority_keywords else "none"),
         f"Memecoin buy alerts: {_fmt_sol(cfg.memecoin_buy_sol)} or {_fmt_usd(cfg.memecoin_buy_usd)} (as reported)",
         "Memecoin ticker stoplist: " + (", ".join(cfg.memecoin_ticker_stop) or "none"),
+        f"Memecoin contract addresses: {_onoff(cfg.memecoin_show_ca)}",
         "Chat rules: " + ("; ".join(f"{r['title']}: {r['rule']}" for r in rules) if rules else "none"),
     ]
 
@@ -4078,7 +4231,11 @@ def cmd_set(args, out=None, err=None) -> int:
     try:
         if name in BOOL_FIELDS:
             setattr(cfg, BOOL_FIELDS[name], _parse_bool(value))
-            msg = f"{name.replace('-', ' ').capitalize()}: {_onoff(getattr(cfg, BOOL_FIELDS[name]))}."
+            on = _onoff(getattr(cfg, BOOL_FIELDS[name]))
+            if name == "memecoin-show-ca":
+                msg = f"Memecoin contract addresses: {on}."
+            else:
+                msg = f"{name.replace('-', ' ').capitalize()}: {on}."
         elif name == "length":
             cfg.length = value.casefold()
             msg = f"Recap length: {cfg.length}."

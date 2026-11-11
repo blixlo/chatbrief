@@ -6,7 +6,7 @@
 
 - Telegram API Terms section 1.5 restricts using Telegram data for AI; an AI-written recap may fall under it, so read the terms and accept the risk yourself (`consent accept`, see below).
 - Read-only: it never sends, posts, reacts or marks anything read in Telegram.
-- Main focus: memecoin mentions across your chats (tokens seen in several chats, big reported buys), plus a general chat recap.
+- Main focus: memecoin mentions across your chats (tokens seen in several chats, big reported buys, with the public contract address when one is known), plus a general chat recap.
 - Install: `python -m venv .venv && .venv/bin/pip install -r requirements.txt`, then `.venv/bin/python -m tg_recap --help`.
 - Recap only, not financial advice.
 
@@ -75,13 +75,14 @@ It never marks messages as read, so your chats stay unread in your own apps.
 Header with both dates and a short zone label (`ChatBrief · Nov 10, 3:20 AM to Nov 11, 3:20 AM PT`), then:
 
 1. **Needs you:** replies to your own messages, @mentions of you (Telegram mention entities, or `@yourname` typed as plain text), and any message containing one of your priority keywords (not from bots). Posts made as your own channel never count as you. Each shows the sender and one clean sentence, cut at a word boundary with an ellipsis.
-2. **Conversations:** what happened, what was decided, dates. With `collect`, the agent writes these in plain sentences from trimmed messages; `run` prints a sentence-style fallback.
-3. **Alert feeds:** automated feeds collapse to one line each, below the conversations (e.g. `Whale Watch: 90 whale alerts, mostly ABC and XYZ`). A feed is a DM with a bot, a chat whose new messages all came from bots (even one), a chat where bots sent at least 60% of 3+ new messages, or a chat where one sender sent at least 80% of 5+ messages that look templated. A bot posting in a group shows once, tied to that group (`Lab Group: 1 trending alert from Some Bot (TI)`); the same alerts in its DM aren't repeated. The noun comes from the messages (trending alert, new listing, whale alert, buy/sell alert, alert, automated post), not the bot's name. Tickers are `$TICKER` or plain ALL-CAPS words of 2-10 characters; anything that looks like an address or a fragment of one is skipped. Bot cards are summarised (`Trending alert (TI)`), never quoted: tree glyphs (├ └ │) and raw stat lines are stripped, and text is cut only at a sentence or word boundary. Turn off with `settings set collapse-alert-bots off`.
-4. **Also active:** muted chats with a count (on by default). **Count only:** chats you set to count-only.
-5. `N other chats had no new messages.` A chat with new messages is never counted as quiet.
-6. `Recap only, not financial advice.` only when market or crypto chats appear.
+2. **Memecoin mentions:** tokens that show up in 2+ chats (or 5+ times in one chat from 2+ people), or that have two or more reported buys at or above the threshold (default 10 SOL or $2,000). Each line shows the ticker and, by default, the most-seen public contract address in a code span (so you can tell coins apart), plus mention counts and any big reported buy. Hide addresses with `settings set memecoin-show-ca off`.
+3. **Conversations:** what happened, what was decided, dates. With `collect`, the agent writes these in plain sentences from trimmed messages; `run` prints a sentence-style fallback.
+4. **Alert feeds:** automated feeds collapse to one line each, below the conversations (e.g. `Whale Watch: 90 whale alerts, mostly ABC and XYZ`). A feed is a DM with a bot, a chat whose new messages all came from bots (even one), a chat where bots sent at least 60% of 3+ new messages, or a chat where one sender sent at least 80% of 5+ messages that look templated. A bot posting in a group shows once, tied to that group (`Lab Group: 1 trending alert from Some Bot (TI)`); the same alerts in its DM aren't repeated. The noun comes from the messages (trending alert, new listing, whale alert, buy/sell alert, alert, automated post), not the bot's name. Tickers are `$TICKER` or plain ALL-CAPS words of 2-10 characters; anything that looks like an address or a fragment of one is skipped. Bot cards are summarised (`Trending alert (TI)`), never quoted: tree glyphs (├ └ │) and raw stat lines are stripped, and text is cut only at a sentence or word boundary. Turn off with `settings set collapse-alert-bots off`.
+5. **Also active:** muted chats with a count (on by default). **Count only:** chats you set to count-only.
+6. `N other chats had no new messages.` A chat with new messages is never counted as quiet.
+7. `Recap only, not financial advice.` only when market or crypto chats appear.
 
-Length (`short`, `standard`, `detailed`) sets the caps: characters per message (200/300/500), messages per chat (15/30/60), total characters (6k/15k/40k) and chats shown (6/10/20). Contract addresses, wallet-like strings, t.me links, phone numbers and numeric IDs are removed from the text.
+Length (`short`, `standard`, `detailed`) sets the caps: characters per message (200/300/500), messages per chat (15/30/60), total characters (6k/15k/40k) and chats shown (6/10/20). In conversations and other recap text, wallet-like strings, t.me links, phone numbers and numeric IDs are removed. Public token contract addresses are shown only in the Memecoin mentions section (off with `settings set memecoin-show-ca off`). Personal wallet addresses stay hidden.
 
 ## Telegram API terms (section 1.5) and consent
 
@@ -104,7 +105,7 @@ This is an AI agent that reads your chats to write recaps, so before sign-in it 
 
 ## Settings
 
-`~/.tg_recap/settings.json` (0600, folder 0700), validated with defaults: `include_muted` true, `include_archived` false, `include_dms` true, `length` standard, `collapse_alert_bots` true, `priority_keywords` empty, `frequency`/`timezone` (stored for the schedule; the code uses the timezone), and per-chat rules stored by an internal salted chat key with the title. Chat titles for matching come from the last recap run (kept in `state.json`, titles only). Raw Telegram IDs are never stored or shown. An older `config.json` is read once if `settings.json` doesn't exist yet. See `docs/sample_recap_v0.1.5.md` for a synthetic example.
+`~/.tg_recap/settings.json` (0600, folder 0700), validated with defaults: `include_muted` true, `include_archived` false, `include_dms` true, `length` standard, `collapse_alert_bots` true, `priority_keywords` empty, `memecoin_show_ca` true, `memecoin_buy_sol` 10, `memecoin_buy_usd` 2000, `frequency`/`timezone` (stored for the schedule; the code uses the timezone), and per-chat rules stored by an internal salted chat key with the title. Chat titles for matching come from the last recap run (kept in `state.json`, titles only). Raw Telegram IDs are never stored or shown. An older `config.json` is read once if `settings.json` doesn't exist yet. See `docs/sample_recap_v0.1.5.md` for a synthetic example.
 
 ## Retention (this code's own cache)
 

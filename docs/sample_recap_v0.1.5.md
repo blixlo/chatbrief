@@ -6,7 +6,7 @@ Regenerate the fallback part with: `python3 -m tg_recap sample`.
 
 ## 1. Agent-written recap (follows the `telegram-recap-run` writing rules)
 
-This is what the agent writes from the `collect` JSON: needs-you first, plain sentences, no message dumps, no links or addresses, only the sender names shown in the chats.
+This is what the agent writes from the `collect` JSON: needs-you first, plain sentences, no message dumps, no links, personal wallet addresses, phone numbers or IDs, only the sender names shown in the chats. Public token CAs may appear in the Memecoin mentions section when one is known.
 
 ```text
 ChatBrief · Nov 10, 3:20 AM to Nov 11, 3:20 AM PT

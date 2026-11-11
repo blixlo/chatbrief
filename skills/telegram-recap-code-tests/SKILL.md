@@ -2205,9 +2205,9 @@ def test_backend_drops_exception_context():
 ~~~~~
 
 ### file: tests/test_memecoin.py
-sha256: 8c70ef0170d0e3f3da558cc50a5af6d7c041ce808a0ad0970f4aa230770a137e
+sha256: 5348350b50a05009212d8eba3079d450063a3126bec447a04aee8e50134c91c0
 ~~~~~
-"""Memecoin mention detection, thresholds, spam discount, CA redaction, buy parsing."""
+"""Memecoin mention detection, thresholds, spam discount, public CA display, buy parsing."""
 import io
 import json
 from datetime import datetime, timedelta, timezone
@@ -2220,7 +2220,7 @@ from tg_recap import __main__ as cli
 from tg_recap.config import Config
 from tg_recap.memecoin import (
     LAST_MEMECOIN_AT, UNNAMED, contracts_in, flagged_buys, format_buy, mentions_from_records,
-    parse_buys, parse_window, tickers_in,
+    parse_buys, parse_window, tickers_in, token_cas_in,
 )
 from tg_recap.render import header, memecoin_line, render
 from conftest import NOW, FakeClient, Msg, ago, mkdialog
@@ -2228,6 +2228,8 @@ from conftest import NOW, FakeClient, Msg, ago, mkdialog
 CA1 = "FAKE111111111111111111111111111111111111111"
 CA2 = "FAKE222222222222222222222222222222222222222"
 EVM = "0x2222222222222222222222222222222222222222"
+PUMP = "FakeMint11111111111111111111111111pump"
+WALLET = "WALLET11111111111111111111111111111111111"
 END = datetime(2026, 11, 11, 11, 20, tzinfo=timezone.utc)
 START = END - timedelta(hours=24)
 
@@ -2278,9 +2280,10 @@ def test_ticker_bound_to_ca_in_same_message_and_nearby():
     assert row["ticker"] == "$PEPE"
     assert row["chats"] == 2 and row["mentions"] >= 3
     assert row["address_sightings"] >= 2 and row["distinct_addresses"] == 1
-    blob = json.dumps(rows) + memecoin_line(row, {"start": START.isoformat(), "end": END.isoformat(),
-                                                  "tz": "America/Los_Angeles"})
-    assert CA1 not in blob
+    assert row["ca"] == CA1 and row["ca_sightings"] >= 2
+    line = memecoin_line(row, {"start": START.isoformat(), "end": END.isoformat(),
+                               "tz": "America/Los_Angeles"})
+    assert CA1 in line and f"CA `{CA1}`" in line
 
 
 def test_name_next_to_ticker():
@@ -2411,30 +2414,36 @@ def test_empty_section_is_omitted_and_no_disclaimer_without_market():
     assert d["memecoin_mentions"] == []
 
 
-def test_ca_never_appears_in_digest_or_render():
+def test_public_ca_appears_in_digest_and_render_by_default():
     records = [
         rec("Alpha", [msg("Ann", 20, f"$PEPE ca {CA1}")]),
         rec("Beta", [msg("Bob", 10, f"same token {CA1}")]),
     ]
     d = digest(records)
     text = render(d)
-    blob = json.dumps(d) + text
-    for bad in (CA1, EVM, "0x2222"):
-        assert bad not in blob
     row = d["memecoin_mentions"][0]
-    assert "same address seen" in memecoin_line(row, d["window"])
-    assert CA1 not in memecoin_line(row, d["window"])
+    assert row["ca"] == CA1
+    line = memecoin_line(row, d["window"])
+    assert f"$PEPE · CA `{CA1}` (seen 2×)" in line
+    assert CA1 in text
+    assert "same address seen" not in line
+    # other recap redaction still holds
+    assert EVM not in text
 
 
-def test_unnamed_token_when_only_a_ca_is_known():
+def test_unnamed_token_listed_under_its_ca():
     recs = [
         rec("Alpha", [msg("Ann", 10, f"this {CA1}")]),
         rec("Beta", [msg("Bob", 8, f"same {CA1}")]),
     ]
     row = mentions_from_records(recs)[0]
     assert row["ticker"] == UNNAMED
-    assert CA1 not in json.dumps(row)
-    assert row["address_sightings"] == 2
+    assert row["ca"] == CA1 and row["ca_sightings"] == 2
+    assert CA1 in json.dumps(row)
+    line = memecoin_line(row, {"start": START.isoformat(), "end": END.isoformat(),
+                               "tz": "America/Los_Angeles"})
+    assert line.startswith(f"• CA `{CA1}` (seen 2×) —")
+    assert "Unnamed token" not in line
 
 
 def test_memecoin_only_render_is_silent_when_empty():
@@ -2569,18 +2578,25 @@ def test_format_buy_prefers_sol_and_drops_trailing_zeros():
     assert format_buy([(1999.0, "USD")]) == "$1,999"
 
 
-def test_address_count_hidden_when_only_one():
+def test_ca_shown_even_when_seen_once_and_multiple_cas_noted():
     records = [
         rec("Alpha", [msg("Ann", 20, "$PEPE ca " + CA1)]),
         rec("Beta", [msg("Bob", 10, "also $PEPE")]),
     ]
     d = digest(records)
-    line = memecoin_line(d["memecoin_mentions"][0], d["window"])
+    row = d["memecoin_mentions"][0]
+    line = memecoin_line(row, d["window"])
+    assert row["ca"] == CA1 and row["ca_sightings"] == 1
+    assert f"CA `{CA1}` (seen 1×)" in line
     assert "same address seen" not in line
-    records[1]["messages"][0]["text"] = "same token " + CA1
+    records[1]["messages"][0]["text"] = "$PEPE ca " + CA2
     d = digest(records)
-    line = memecoin_line(d["memecoin_mentions"][0], d["window"])
-    assert "same address seen 2×" in line
+    row = d["memecoin_mentions"][0]
+    line = memecoin_line(row, d["window"])
+    # two different CAs, each seen once; most-seen is stable by Counter order of first max
+    assert row["ca"] in (CA1, CA2) and row["other_cas"] == 1
+    assert f"+1 other CA seen" in line
+    assert CA1 in line or CA2 in line
 
 
 def test_table_short_tickers_are_filtered_and_cap_is_ten():
@@ -2635,6 +2651,77 @@ def test_stoplist_and_profanity_are_dropped():
     ]
     tickers = {r["ticker"] for r in mentions_from_records(recs, cfg)}
     assert tickers == {"$BONK"}
+
+
+def test_show_ca_setting_off_hides_addresses():
+    records = [
+        rec("Alpha", [msg("Ann", 20, f"$PEPE ca {CA1}")]),
+        rec("Beta", [msg("Bob", 10, f"same token {CA1}")]),
+    ]
+    cfg = Config(memecoin_show_ca=False)
+    rows = mentions_from_records(records, cfg)
+    row = rows[0]
+    assert "ca" not in row
+    assert CA1 not in json.dumps(rows)
+    line = memecoin_line(row, {"start": START.isoformat(), "end": END.isoformat(),
+                               "tz": "America/Los_Angeles"})
+    assert CA1 not in line
+    assert "same address seen 2×" in line
+    text = render(digest(records, cfg))
+    assert CA1 not in text
+    assert "same address seen 2×" in text
+
+
+def test_token_context_and_wallet_exclusion():
+    assert token_cas_in(f"$PEPE ca {CA1}") == [CA1]
+    assert token_cas_in(f"https://dexscreener.com/solana/{CA1}") == [CA1]
+    assert token_cas_in(f"https://pump.fun/{PUMP}") == [PUMP]
+    assert token_cas_in(f"chart https://birdeye.so/token/{CA1}?chain=solana") == [CA1]
+    assert token_cas_in(f"see https://solscan.io/token/{EVM}") == [EVM]
+    assert PUMP in token_cas_in(f"new mint {PUMP}")  # pump suffix counts with no label
+    assert token_cas_in(f"wallet {WALLET} bought 15 SOL of $PEPE") == []
+    assert WALLET not in token_cas_in(f"sent to {WALLET}")
+    # ticker + token CA in one message, buyer wallet hidden
+    text = f"wallet {WALLET} bought 15 SOL of $PEPE ca {CA1}"
+    assert token_cas_in(text) == [CA1]
+
+
+def test_buyer_wallet_is_not_shown_on_a_ticker_row():
+    records = [
+        rec("Alpha", [msg("Ann", 20, f"wallet {WALLET} bought 15 SOL of $PEPE")]),
+        rec("Beta", [msg("Bob", 10, f"$PEPE looking busy")]),
+    ]
+    row = mentions_from_records(records)[0]
+    assert row["ticker"] == "$PEPE"
+    assert row.get("ca") is None
+    assert WALLET not in json.dumps(row)
+    assert WALLET not in memecoin_line(row, {"start": START.isoformat(), "end": END.isoformat(),
+                                            "tz": "America/Los_Angeles"})
+
+
+def test_pump_suffix_ca_qualifies_without_a_ticker():
+    recs = [
+        rec("Alpha", [msg("Ann", 10, f"new coin {PUMP}")]),
+        rec("Beta", [msg("Bob", 8, f"same {PUMP}")]),
+    ]
+    row = mentions_from_records(recs)[0]
+    assert row["ca"] == PUMP
+    assert PUMP in memecoin_line(row, {"start": START.isoformat(), "end": END.isoformat(),
+                                       "tz": "America/Los_Angeles"})
+
+
+def test_settings_memecoin_show_ca_roundtrip(tg_home):
+    from types import SimpleNamespace as NS
+    out, err = io.StringIO(), io.StringIO()
+    rc = settings_cli.cmd_set(NS(name="memecoin-show-ca", value=["off"]), out=out, err=err)
+    assert rc == 0 and err.getvalue() == "" and "Memecoin contract addresses: off." in out.getvalue()
+    assert config.load().memecoin_show_ca is False
+    out, err = io.StringIO(), io.StringIO()
+    rc = settings_cli.cmd_set(NS(name="memecoin-show-ca", value=["on"]), out=out, err=err)
+    assert rc == 0 and "Memecoin contract addresses: on." in out.getvalue()
+    assert config.load().memecoin_show_ca is True
+    shown = "\n".join(settings_cli.show_lines(config.load()))
+    assert "Memecoin contract addresses: on" in shown
 ~~~~~
 
 ### file: tests/test_readonly.py
@@ -2758,7 +2845,7 @@ def test_rate_limit_sleeps_between_calls():
 ~~~~~
 
 ### file: tests/test_redact.py
-sha256: 543af452a403eeed52c35979a4cab7f26fd0e914017810a74e04397137494f13
+sha256: 238cebb5b85bcad058a074be3d54a4dae555fb8b7f7ec8497e94b5f961e93dc2
 ~~~~~
 import pytest
 
@@ -2823,6 +2910,20 @@ def test_tracking_query_and_x_status_links_stripped():
     assert "[link removed]" in out
     leftover = "see [id removed]?a=track&s=20 end"
     assert "track" not in redact(leftover) and "?a=" not in redact(leftover)
+
+
+def test_keep_addresses_preserves_listed_cas_only():
+    ca = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+    evm = "0x1111111111111111111111111111111111111111"
+    other = "0x2222222222222222222222222222222222222222"
+    text = f"token CA `{ca}` and wallet {evm} call +1 555 010 9999 also {other}"
+    out = redact(text, keep_addresses=[ca])
+    assert ca in out
+    assert evm not in out and other not in out
+    assert "555 010 9999" not in out
+    assert "[address removed]" in out and "[phone removed]" in out
+    # default redact still strips the CA
+    assert ca not in redact(text)
 ~~~~~
 
 ### file: tests/test_retention_runner.py
@@ -2925,7 +3026,7 @@ def test_invalid_settings_exit_7_before_touching_telegram(tg_home):
 ~~~~~
 
 ### file: tests/test_settings.py
-sha256: 613b7b4b574fdecbc2941515b3a7bca64f70ad1045c2eeebbfd8644c8427db86
+sha256: 91345bcf4fc5e3b53c2e0801156c2ae4514d4d0b9fbeaf7fe8dce38cf0ea422e
 ~~~~~
 """settings.json schema, defaults, CLI (show/set/chat/keyword), modes, fuzzy matching."""
 import io
@@ -2957,6 +3058,7 @@ def test_defaults():
     assert (c.include_muted, c.include_archived, c.include_dms, c.length, c.collapse_alert_bots) == \
         (True, False, True, "standard", True)
     assert c.priority_keywords == [] and c.chat_rules == {} and c.timezone == "America/Los_Angeles"
+    assert c.memecoin_show_ca is True
 
 
 def test_legacy_config_json_is_read_once(tg_home):

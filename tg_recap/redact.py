@@ -1,9 +1,11 @@
 """Strip identifiers and secrets from text before it leaves the collector.
 
-Removed: contract/wallet-looking strings (EVM 0x..., Solana/base58, Bitcoin),
-long hex blobs, t.me / telegram.me links (incl. invite links), x.com/twitter
-status links, URL query/fragment strings, phone numbers, numeric Telegram IDs,
-login/verification codes, passwords, and seed/recovery phrases.
+Removed: wallet-looking strings (EVM 0x..., Solana/base58, Bitcoin), long hex
+blobs, t.me / telegram.me links (incl. invite links), x.com/twitter status
+links, URL query/fragment strings, phone numbers, numeric Telegram IDs,
+login/verification codes, passwords, and seed/recovery phrases. Public token
+CAs may be left in place when the caller passes them in keep_addresses
+(Memecoin mentions only).
 """
 from __future__ import annotations
 
@@ -48,13 +50,35 @@ def _strip_urls(text: str) -> str:
     return _URL.sub(lambda m: re.split(r"[?#]", m.group(0), maxsplit=1)[0], text)
 
 
-def redact(text: str) -> str:
+def _hold_addresses(text: str, addresses) -> tuple[str, list[tuple[str, str]]]:
+    """Swap keep-list CAs for placeholders so later patterns can't chew them."""
+    held: list[tuple[str, str]] = []
+    out = text
+    for addr in addresses or []:
+        if not addr:
+            continue
+        variants = [addr]
+        if addr.lower() != addr:
+            variants.append(addr.lower())
+        for v in dict.fromkeys(variants):
+            if v and v in out:
+                token = f"KEEPCA{len(held)}MARKER"
+                out = out.replace(v, token)
+                held.append((token, v))
+    return out, held
+
+
+def redact(text: str, keep_addresses: list[str] | set[str] | None = None) -> str:
     if not text:
         return ""
-    out = _strip_urls(text)
+    out, held = _hold_addresses(text, keep_addresses)
+    out = _strip_urls(out)
     for pattern, repl in _SECRETS + _PATTERNS:
         out = pattern.sub(repl, out)
-    return _QUERY_AFTER_REDACT.sub("[link removed]", out)
+    out = _QUERY_AFTER_REDACT.sub("[link removed]", out)
+    for token, addr in held:
+        out = out.replace(token, addr)
+    return out
 
 
 _ADDRESSY = re.compile(r"\b0x[a-fA-F0-9]{40}\b|\b[1-9A-HJ-NP-Za-km-z]{32,44}\b")

@@ -28,6 +28,7 @@ def test_defaults():
     assert (c.include_muted, c.include_archived, c.include_dms, c.length, c.collapse_alert_bots) == \
         (True, False, True, "standard", True)
     assert c.priority_keywords == [] and c.chat_rules == {} and c.timezone == "America/Los_Angeles"
+    assert c.memecoin_show_ca is True
 
 
 def test_legacy_config_json_is_read_once(tg_home):

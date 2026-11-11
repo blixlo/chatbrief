@@ -62,25 +62,42 @@ def header(window: dict) -> str:
     return f"{PRODUCT_NAME} · {window_label(window)}"
 
 
+def _ca_label(item: dict) -> str | None:
+    ca = item.get("ca")
+    if not ca:
+        return None
+    n = int(item.get("ca_sightings") or 0)
+    bit = f"CA `{ca}`" + (f" (seen {n}×)" if n else "")
+    other = int(item.get("other_cas") or 0)
+    if other:
+        bit += f" +{other} other CA{'s' if other != 1 else ''} seen"
+    return bit
+
+
 def memecoin_line(item: dict, window: dict) -> str:
     tz = ZoneInfo(window["tz"])
     raw = item.get("first_seen") or ""
     first = datetime.fromisoformat(raw).astimezone(tz) if raw else None
     n, c = int(item.get("mentions") or 0), int(item.get("chats") or 0)
     parts = [f"{n} mention{'s' if n != 1 else ''} in {c} chat{'s' if c != 1 else ''}"]
-    sightings = int(item.get("address_sightings") or 0)
-    if sightings >= 2:
-        if int(item.get("distinct_addresses") or 1) > 1:
-            parts.append(f"addresses seen {sightings}×")
-        else:
-            parts.append(f"same address seen {sightings}×")
+    ca_bit = _ca_label(item)
+    label = item.get("ticker") or "Unnamed token"
+    if ca_bit:
+        label = ca_bit if label == "Unnamed token" else f"{label} · {ca_bit}"
+    else:
+        sightings = int(item.get("address_sightings") or 0)
+        if sightings >= 2:
+            if int(item.get("distinct_addresses") or 1) > 1:
+                parts.append(f"addresses seen {sightings}×")
+            else:
+                parts.append(f"same address seen {sightings}×")
     if first is not None:
         parts.append(f"first seen {_stamp(first)}")
     if item.get("biggest_buy"):
         parts.append(f"biggest reported buy: {item['biggest_buy']}")
     chats = ", ".join(item.get("chat_names") or [])
     tail = f" — {chats}" if chats else ""
-    return f"• {item.get('ticker') or 'Unnamed token'} — {', '.join(parts)}{tail}"
+    return f"• {label} — {', '.join(parts)}{tail}"
 
 
 def _names(people: list[str]) -> str:
@@ -142,6 +159,14 @@ def _counts(label: str, rows: list[dict]) -> str:
     return f"{label}: " + ", ".join(f"{r['name']} ({r['new_messages']} new)" for r in rows) + "."
 
 
+def _keep_cas(coins: list) -> list[str]:
+    return [c["ca"] for c in coins if c.get("ca")]
+
+
+def _redact_recap(text: str, coins: list) -> str:
+    return redact(text, keep_addresses=_keep_cas(coins))
+
+
 def render(digest: dict, bullets: int | None = None, memecoin_only: bool = False) -> str:
     needs = digest.get("needs_you", [])
     convs = digest.get("conversations", [])
@@ -151,7 +176,7 @@ def render(digest: dict, bullets: int | None = None, memecoin_only: bool = False
         if not coins:
             return ""
         lines = [header(digest["window"]), ""] + _coin_block(coins, digest["window"]) + ["", DISCLAIMER]
-        return redact("\n".join(lines).rstrip() + "\n")
+        return _redact_recap("\n".join(lines).rstrip() + "\n", coins)
     if not (needs or convs or feeds or coins):
         return ""
     if bullets is None:
@@ -182,4 +207,4 @@ def render(digest: dict, bullets: int | None = None, memecoin_only: bool = False
     lines += tail
     if digest.get("show_disclaimer") or coins:
         lines += ["", DISCLAIMER]
-    return redact("\n".join(lines).rstrip() + "\n")
+    return _redact_recap("\n".join(lines).rstrip() + "\n", coins)

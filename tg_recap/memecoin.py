@@ -1,4 +1,4 @@
-"""Detect memecoin tickers, map CAs to names, count mentions, flag reported buys. No CAs in output."""
+"""Detect memecoin tickers, map CAs to names, count mentions, flag reported buys."""
 from __future__ import annotations
 
 import re
@@ -85,7 +85,7 @@ def tickers_in(text: str, extra_stop: set[str] | None = None) -> list[str]:
 
 
 def contracts_in(text: str) -> list[str]:
-    """Canonical CA strings (EVM lowercased, Solana as written). Never shown."""
+    """Canonical CA strings (EVM lowercased, Solana as written)."""
     found: list[str] = []
     for m in _EVM.finditer(text or ""):
         found.append(m.group(0).lower())
@@ -93,6 +93,76 @@ def contracts_in(text: str) -> list[str]:
     for m in _SOL.finditer(stripped):
         found.append(m.group(0))
     return list(dict.fromkeys(found))
+
+
+_WALLET_LEFT = re.compile(
+    r"\b(?:wallets?|buyers?|traders?|holders?|from|by|sender|signer|"
+    r"send(?:ing)?\s+to|sent\s+to|deposit(?:ed|s|ing)?(?:\s+to)?)\s*[:#=]?\s*$",
+    re.I,
+)
+_WALLET_RIGHT = re.compile(r"^\s*(?:bought|sold|swapped|buys|sells|buying|selling)\b", re.I)
+_TOKEN_LEFT = re.compile(
+    r"\b(?:(?:token|contract)\s+)?(?:ca|contract|address|addr|mint|token)s?\s*[:#=]?\s*$",
+    re.I,
+)
+_TOKEN_HOSTS = ("dexscreener.com/", "pump.fun/", "birdeye.so/", "solscan.io/")
+
+
+def _addr_spans(text: str, addr: str):
+    t = text or ""
+    if addr.startswith("0x"):
+        for m in _EVM.finditer(t):
+            if m.group(0).lower() == addr.lower():
+                yield m.start(), m.end()
+        return
+    start = 0
+    while True:
+        i = t.find(addr, start)
+        if i < 0:
+            return
+        yield i, i + len(addr)
+        start = i + 1
+
+
+def _wallet_context(text: str, addr: str) -> bool:
+    t = text or ""
+    for start, end in _addr_spans(t, addr):
+        if _WALLET_LEFT.search(t[:start]) or _WALLET_RIGHT.search(t[end:]):
+            return True
+    return False
+
+
+def _in_token_url(text: str, addr: str) -> bool:
+    t = text or ""
+    for host in _TOKEN_HOSTS:
+        if re.search(re.escape(host) + r"\S*" + re.escape(addr), t, re.I):
+            return True
+    return False
+
+
+def _near_ticker(text: str, start: int, end: int, extra=None, window: int = 80) -> bool:
+    lo, hi = max(0, start - window), min(len(text), end + window)
+    return bool(tickers_in(text[lo:hi], extra))
+
+
+def token_context(text: str, addr: str, extra=None) -> bool:
+    """True when addr looks like a token CA, not a personal wallet."""
+    if (addr or "").lower().endswith("pump"):
+        return True
+    t = text or ""
+    if _in_token_url(t, addr):
+        return True
+    if _wallet_context(t, addr):
+        return False
+    for start, end in _addr_spans(t, addr):
+        if _TOKEN_LEFT.search(t[:start]) or _near_ticker(t, start, end, extra):
+            return True
+    return False
+
+
+def token_cas_in(text: str, extra=None) -> list[str]:
+    """CAs in this text that appear in token context (label, token link, ticker, or *pump)."""
+    return [ca for ca in contracts_in(text) if token_context(text, ca, extra)]
 
 
 def _parse_num(num: str, suffix: str | None = None) -> float:
@@ -247,10 +317,13 @@ def _hits_from_records(records: list, cfg=None) -> list[dict]:
         for m in kept:
             text = m.get("text") or ""
             toks = tickers_in(text, extra)
-            extracted.append((toks, contracts_in(text), parse_buys(text), names_for(text, toks),
+            all_cas = contracts_in(text)
+            group_cas = [ca for ca in all_cas if not _wallet_context(text, ca)]
+            show_cas = [ca for ca in group_cas if token_context(text, ca, extra)]
+            extracted.append((toks, group_cas, show_cas, parse_buys(text), names_for(text, toks),
                               _tableish(text, toks)))
         for i, m in enumerate(kept):
-            tickers, cas, buys, names, table = extracted[i]
+            tickers, cas, show_cas, buys, names, table = extracted[i]
             tickers = _associate(kept, i, cas, tickers, extra)
             if not tickers and not cas:
                 continue
@@ -258,11 +331,13 @@ def _hits_from_records(records: list, cfg=None) -> list[dict]:
                     "ts": m.get("ts"), "table": table}
             if not tickers and cas:
                 for ca in cas:
-                    hits.append({**base, "ticker": None, "name": None, "cas": [ca], "buys": buys})
+                    hits.append({**base, "ticker": None, "name": None, "cas": [ca],
+                                 "show_cas": [ca] if ca in show_cas else [], "buys": buys})
                 continue
             for tok in tickers:
                 hits.append({**base, "ticker": tok, "name": names.get(tok),
                              "cas": list(cas) if len(tickers) == 1 else [],
+                             "show_cas": list(show_cas) if len(tickers) == 1 else [],
                              "buys": buys if len(tickers) == 1 else []})
     return hits
 
@@ -331,9 +406,34 @@ def _junk_short(group: list[dict], ticker: str) -> bool:
     return 2 <= len(core) <= 3 and group and all(h.get("table") for h in group)
 
 
+def _show_ca_enabled(cfg=None) -> bool:
+    if cfg is None:
+        return True
+    return bool(getattr(cfg, "memecoin_show_ca", True))
+
+
+def _ca_fields(group: list[dict], show_ca: bool) -> dict:
+    all_cas = [ca for h in group for ca in h["cas"]]
+    displayable = {ca for h in group for ca in (h.get("show_cas") or [])}
+    if not any(h.get("ticker") for h in group):
+        displayable.update(ca for ca, n in Counter(all_cas).items() if n >= 2)
+    counts = Counter(ca for ca in all_cas if ca in displayable)
+    out = {
+        "address_sightings": len(all_cas),
+        "distinct_addresses": len(set(all_cas)),
+    }
+    if show_ca and counts:
+        top, top_n = counts.most_common(1)[0]
+        out["ca"] = top
+        out["ca_sightings"] = top_n
+        out["other_cas"] = len(counts) - 1
+    return out
+
+
 def mentions_from_records(records: list, cfg=None) -> list[dict]:
-    """Tokens that cross a mention or big-buy threshold. No CAs or ids."""
+    """Tokens that cross a mention or big-buy threshold. Public CAs included when enabled."""
     rows = []
+    show_ca = _show_ca_enabled(cfg)
     for group in _group_hits(_hits_from_records(records, cfg)):
         flagged = flagged_buys([b for h in group for b in h["buys"]], cfg)
         if not _qualifies(group, cfg):
@@ -342,18 +442,17 @@ def mentions_from_records(records: list, cfg=None) -> list[dict]:
         if _blocked(label.lstrip("$")) or _junk_short(group, label):
             continue
         chats = list(dict.fromkeys(h["chat"] for h in group))
-        cas = [ca for h in group for ca in h["cas"]]
         times = [h["ts"] for h in group if h["ts"] is not None]
-        rows.append({
+        row = {
             "ticker": label,
             "mentions": len(group),
             "chats": len(chats),
             "chat_names": chats,
-            "address_sightings": len(cas),
-            "distinct_addresses": len(set(cas)),
             "first_seen": _iso(min(times) if times else None),
             "biggest_buy": format_buy(flagged),
-        })
+        }
+        row.update(_ca_fields(group, show_ca))
+        rows.append(row)
     rows.sort(key=lambda r: (-r["chats"], -r["mentions"], r["first_seen"] or ""))
     return rows
 
