@@ -69,7 +69,7 @@ It connects only to Telegram's official web endpoints (`wss://<dc>.web.telegram.
 
 **Change frequency:** ask with the step 5 widget (or take the owner's plain words), then run `$PY -m tg_recap set-frequency <daily|every-4-hours|hourly|custom --hours N> [--timezone TZ] --json` (or `$PY -m tg_recap settings set frequency <daily|every-4-hours|hourly|custom N>`; both save to `~/.tg_recap/settings.json`). Then update your own routine's cron and timezone to the printed values, and confirm in one line, e.g. "Done: recaps every 4 hours (0 */4 * * *, America/Los_Angeles)." Mention the plan warning if one is printed.
 
-**Other recap settings** (length, muted/archived/DM chats, alert-bot feeds, per-chat include/skip/count-only, priority keywords, memecoin buy thresholds, whether public CAs are shown): see "Settings from plain chat" in `telegram-recap-run`. `$PY -m tg_recap settings show` lists them without any IDs.
+**Other recap settings** (length, muted/archived/DM chats, alert-bot feeds, per-chat include/skip/count-only, priority keywords, memecoin buy thresholds, whether public CAs are shown, "only cover these chats"): see "Settings from plain chat" in `telegram-recap-run`. `$PY -m tg_recap settings show` lists them without any IDs.
 
 **Revoke / stop:** the user ends the session in Telegram **Settings > Devices**, and you pause or delete your routine. To fully remove local data, the user can delete `~/.tg_recap` on this computer (ask before deleting anything).
 

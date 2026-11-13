@@ -690,7 +690,7 @@ def test_extractor_refuses_a_tampered_tests_skill(tmp_path):
 ~~~~~
 
 ### file: tests/test_collect_render.py
-sha256: 9c2f47349563c7b402886decd76b2b6a3435957479212a01bb1aeb054892b1c2
+sha256: 5d62211ca59edd6200334b95bbc3d8397fb38ab4f40b3319533052adcd7c489c
 ~~~~~
 """Collector routing, needs-you logic, feeds, header, disclaimer, caps, fallback text."""
 import json
@@ -834,6 +834,29 @@ def test_collapse_setting_off_and_chat_rules():
     mkey = C.chat_key(world()[3], "s")
     d, _, _ = collect(world(), Config(chat_rules={mkey: {"title": "Muted Group", "rule": "include"}}))
     assert "Muted Group" in names(d["conversations"]) and d["also_active"] == []
+
+
+def test_only_included_chats_is_an_allow_list_and_skips_reading_the_rest():
+    dialogs = world()
+    wk, whale = C.chat_key(dialogs[0], "s"), C.chat_key(dialogs[5], "s")
+    rules = {wk: {"title": "Work Group", "rule": "include"}, whale: {"title": "Whale Watch", "rule": "count-only"}}
+    d, fake, _ = collect(world(), Config(chat_rules=rules, only_included_chats=True))
+    assert names(d["conversations"]) == ["Work Group"] and d["count_only"][0]["name"] == "Whale Watch"
+    assert d["also_active"] == [] and d["alert_feeds"] == [] and "Muted Group" not in json.dumps(d)
+    assert fake.calls.count("iter_messages") == 2  # only the two included chats are read
+    # off: everything is covered as before
+    d, fake, _ = collect(world(), Config(chat_rules=rules))
+    assert fake.calls.count("iter_messages") > 2
+    # on with no include rules: nothing is covered
+    d, fake, _ = collect(world(), Config(only_included_chats=True))
+    assert d["conversations"] == [] and d["also_active"] == [] and fake.calls.count("iter_messages") == 0
+    # skip still wins, and a chat that appears later stays out
+    rules[wk]["rule"] = "skip"
+    d, _, _ = collect(world(), Config(chat_rules=rules, only_included_chats=True))
+    assert "Work Group" not in json.dumps(d)
+    late = mkdialog(9, "Late Joined", [Msg(90, "hello there", ago(5), sender=BOB)])
+    d, _, _ = collect(world() + [late], Config(chat_rules=rules, only_included_chats=True))
+    assert "Late Joined" not in json.dumps(d)
 
 
 # --- 4. needs you ---------------------------------------------------------------------
@@ -2205,7 +2228,7 @@ def test_backend_drops_exception_context():
 ~~~~~
 
 ### file: tests/test_memecoin.py
-sha256: 5348350b50a05009212d8eba3079d450063a3126bec447a04aee8e50134c91c0
+sha256: cc32f463e100b66b9eeb12bb9243f4852096662fca3af69fdf693ed63d20eceb
 ~~~~~
 """Memecoin mention detection, thresholds, spam discount, public CA display, buy parsing."""
 import io
@@ -2722,6 +2745,33 @@ def test_settings_memecoin_show_ca_roundtrip(tg_home):
     assert config.load().memecoin_show_ca is True
     shown = "\n".join(settings_cli.show_lines(config.load()))
     assert "Memecoin contract addresses: on" in shown
+
+
+def test_only_included_chats_keeps_other_chats_out_of_memecoin_mentions(tg_home):
+    from conftest import ME_ID, Ent, run
+    from tg_recap.readonly import ReadOnlyClient
+
+    async def nosleep(_):
+        return None
+
+    def build(cfg):
+        sender = Ent(first_name="Ann", id=21)
+        dialogs = [mkdialog(i, name, [Msg(i * 10, "$BONK looks active", ago(30), sender=sender)])
+                   for i, name in ((1, "Alpha"), (2, "Beta"), (3, "Gamma"))]
+        fake = FakeClient(dialogs, me=Ent(first_name="Owner", id=ME_ID))
+        client = ReadOnlyClient(fake, min_interval=0, sleep=nosleep)
+        state = {"salt": "s", "last_recap_at": (NOW - timedelta(hours=12)).isoformat()}
+        return run(C.collect(client, cfg, state, NOW)), dialogs
+
+    d, dialogs = build(Config())
+    assert [m["ticker"] for m in d["memecoin_mentions"]] == ["$BONK"] and d["memecoin_mentions"][0]["chats"] == 3
+    rules = {C.chat_key(x, "s"): {"title": x.name, "rule": "include"} for x in dialogs[:1]}
+    d, _ = build(Config(chat_rules=rules, only_included_chats=True))
+    assert d["memecoin_mentions"] == []  # one included chat is below the 2-chat threshold
+    rules = {C.chat_key(x, "s"): {"title": x.name, "rule": "include"} for x in dialogs[:2]}
+    d, _ = build(Config(chat_rules=rules, only_included_chats=True))
+    row = d["memecoin_mentions"][0]
+    assert row["chats"] == 2 and row["chat_names"] == ["Alpha", "Beta"]
 ~~~~~
 
 ### file: tests/test_readonly.py
@@ -3026,7 +3076,7 @@ def test_invalid_settings_exit_7_before_touching_telegram(tg_home):
 ~~~~~
 
 ### file: tests/test_settings.py
-sha256: 91345bcf4fc5e3b53c2e0801156c2ae4514d4d0b9fbeaf7fe8dce38cf0ea422e
+sha256: e48166fb1c462ca3589436001684d6ee5cbb5c9e31dd95ff07364781111806db
 ~~~~~
 """settings.json schema, defaults, CLI (show/set/chat/keyword), modes, fuzzy matching."""
 import io
@@ -3058,7 +3108,7 @@ def test_defaults():
     assert (c.include_muted, c.include_archived, c.include_dms, c.length, c.collapse_alert_bots) == \
         (True, False, True, "standard", True)
     assert c.priority_keywords == [] and c.chat_rules == {} and c.timezone == "America/Los_Angeles"
-    assert c.memecoin_show_ca is True
+    assert c.memecoin_show_ca is True and c.only_included_chats is False
 
 
 def test_legacy_config_json_is_read_once(tg_home):
@@ -3158,6 +3208,23 @@ def test_cli_wiring(tg_home, monkeypatch, capsys):
     paths.write_json(paths.settings_file(), {"length": "huge"})
     assert cli.main(["settings", "show"]) == 7
     assert capsys.readouterr().err.startswith("SETTINGS_INVALID: length")
+
+
+def test_only_included_chats_setting_roundtrip(tg_home, no_consent):
+    rc, out, err = call(settings_cli.cmd_show, json=False)
+    assert "Only included chats: off" in out
+    rc, out, err = call(settings_cli.cmd_set, name="only-included-chats", value=["on"])
+    assert rc == 0 and err == "" and out.startswith("Only included chats: on")
+    assert config.load().only_included_chats is True
+    rc, out, _ = call(settings_cli.cmd_show, json=False)
+    assert "Only included chats: on" in out
+    rc, out, err = call(settings_cli.cmd_set, name="only-included-chats", value=["maybe"])
+    assert rc == 1 and config.load().only_included_chats is True
+    rc, out, err = call(settings_cli.cmd_set, name="only-included-chats", value=["off"])
+    assert rc == 0 and config.load().only_included_chats is False
+    paths.write_json(paths.settings_file(), {"only_included_chats": "yes"})
+    with pytest.raises(config.SettingsError):
+        config.load()
 ~~~~~
 
 ### file: tests/test_static.py

@@ -14,7 +14,8 @@ from . import collect, config
 
 BOOL_FIELDS = {"include-muted": "include_muted", "include-archived": "include_archived",
                "include-dms": "include_dms", "collapse-alert-bots": "collapse_alert_bots",
-               "memecoin-show-ca": "memecoin_show_ca"}
+               "memecoin-show-ca": "memecoin_show_ca",
+               "only-included-chats": "only_included_chats"}
 TRUE = {"on", "true", "yes", "1", "y"}
 FALSE = {"off", "false", "no", "0", "n"}
 NUM_FIELDS = {"memecoin-buy-sol": "memecoin_buy_sol", "memecoin-buy-usd": "memecoin_buy_usd"}
@@ -56,6 +57,7 @@ def show_lines(cfg) -> list[str]:
         f"Memecoin buy alerts: {_fmt_sol(cfg.memecoin_buy_sol)} or {_fmt_usd(cfg.memecoin_buy_usd)} (as reported)",
         "Memecoin ticker stoplist: " + (", ".join(cfg.memecoin_ticker_stop) or "none"),
         f"Memecoin contract addresses: {_onoff(cfg.memecoin_show_ca)}",
+        f"Only included chats: {_onoff(cfg.only_included_chats)}",
         "Chat rules: " + ("; ".join(f"{r['title']}: {r['rule']}" for r in rules) if rules else "none"),
     ]
 
@@ -111,6 +113,9 @@ def cmd_set(args, out=None, err=None) -> int:
             on = _onoff(getattr(cfg, BOOL_FIELDS[name]))
             if name == "memecoin-show-ca":
                 msg = f"Memecoin contract addresses: {on}."
+            elif name == "only-included-chats":
+                msg = f"Only included chats: {on}" + \
+                    (" (every chat without an include or count-only rule is left out)." if on == "on" else ".")
             else:
                 msg = f"{name.replace('-', ' ').capitalize()}: {on}."
         elif name == "length":

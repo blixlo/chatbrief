@@ -61,7 +61,7 @@ It never marks messages as read, so your chats stay unread in your own apps.
 | `python -m tg_recap run` | One recap run. Prints the fallback recap, or nothing |
 | `... collect --peek` / `... run --peek` | Test or manual run: same full read, but the window isn't advanced and `state.json` isn't written at all (no window, no chat-title directory); no recap copy is saved. JSON has `"peek": true` |
 | `python -m tg_recap settings show` | Your settings, no IDs |
-| `python -m tg_recap settings set NAME VALUE` | `length`, `include-muted`, `include-archived`, `include-dms`, `collapse-alert-bots`, `timezone`, `priority-keywords`, `frequency`, `daily-hour` |
+| `python -m tg_recap settings set NAME VALUE` | `length`, `include-muted`, `include-archived`, `include-dms`, `collapse-alert-bots`, `only-included-chats`, `timezone`, `priority-keywords`, `frequency`, `daily-hour` |
 | `python -m tg_recap settings chat TITLE include\|skip\|count-only\|default` | Per-chat rule (fuzzy title match; ambiguity is reported) |
 | `python -m tg_recap settings keyword add\|remove WORD` | Priority keywords, flagged first |
 | `python -m tg_recap sample` | Prints a sample recap from fake example data |
@@ -105,7 +105,7 @@ This is an AI agent that reads your chats to write recaps, so before sign-in it 
 
 ## Settings
 
-`~/.tg_recap/settings.json` (0600, folder 0700), validated with defaults: `include_muted` true, `include_archived` false, `include_dms` true, `length` standard, `collapse_alert_bots` true, `priority_keywords` empty, `memecoin_show_ca` true, `memecoin_buy_sol` 10, `memecoin_buy_usd` 2000, `frequency`/`timezone` (stored for the schedule; the code uses the timezone), and per-chat rules stored by an internal salted chat key with the title. Chat titles for matching come from the last recap run (kept in `state.json`, titles only). Raw Telegram IDs are never stored or shown. An older `config.json` is read once if `settings.json` doesn't exist yet. See `docs/sample_recap_v0.1.5.md` for a synthetic example.
+`~/.tg_recap/settings.json` (0600, folder 0700), validated with defaults: `include_muted` true, `include_archived` false, `include_dms` true, `length` standard, `collapse_alert_bots` true, `priority_keywords` empty, `memecoin_show_ca` true, `only_included_chats` false (when on, only chats with an include or count-only rule are read; later-joined chats stay out), `memecoin_buy_sol` 10, `memecoin_buy_usd` 2000, `frequency`/`timezone` (stored for the schedule; the code uses the timezone), and per-chat rules stored by an internal salted chat key with the title. Chat titles for matching come from the last recap run (kept in `state.json`, titles only). Raw Telegram IDs are never stored or shown. An older `config.json` is read once if `settings.json` doesn't exist yet. See `docs/sample_recap_v0.1.5.md` for a synthetic example.
 
 ## Retention (this code's own cache)
 

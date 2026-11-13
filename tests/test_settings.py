@@ -28,7 +28,7 @@ def test_defaults():
     assert (c.include_muted, c.include_archived, c.include_dms, c.length, c.collapse_alert_bots) == \
         (True, False, True, "standard", True)
     assert c.priority_keywords == [] and c.chat_rules == {} and c.timezone == "America/Los_Angeles"
-    assert c.memecoin_show_ca is True
+    assert c.memecoin_show_ca is True and c.only_included_chats is False
 
 
 def test_legacy_config_json_is_read_once(tg_home):
@@ -128,3 +128,20 @@ def test_cli_wiring(tg_home, monkeypatch, capsys):
     paths.write_json(paths.settings_file(), {"length": "huge"})
     assert cli.main(["settings", "show"]) == 7
     assert capsys.readouterr().err.startswith("SETTINGS_INVALID: length")
+
+
+def test_only_included_chats_setting_roundtrip(tg_home, no_consent):
+    rc, out, err = call(settings_cli.cmd_show, json=False)
+    assert "Only included chats: off" in out
+    rc, out, err = call(settings_cli.cmd_set, name="only-included-chats", value=["on"])
+    assert rc == 0 and err == "" and out.startswith("Only included chats: on")
+    assert config.load().only_included_chats is True
+    rc, out, _ = call(settings_cli.cmd_show, json=False)
+    assert "Only included chats: on" in out
+    rc, out, err = call(settings_cli.cmd_set, name="only-included-chats", value=["maybe"])
+    assert rc == 1 and config.load().only_included_chats is True
+    rc, out, err = call(settings_cli.cmd_set, name="only-included-chats", value=["off"])
+    assert rc == 0 and config.load().only_included_chats is False
+    paths.write_json(paths.settings_file(), {"only_included_chats": "yes"})
+    with pytest.raises(config.SettingsError):
+        config.load()
