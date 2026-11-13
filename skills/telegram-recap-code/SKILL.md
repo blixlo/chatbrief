@@ -165,7 +165,7 @@ if __name__ == "__main__":
 ## Files
 
 ### file: README.md
-sha256: aa24d06af4f2ccdb51d242ad5577a54a9f8dcb2fc6e7dbe6ff1f6f1a0b56903a
+sha256: 125df59325fa4467fc11691c11eee3b5dbf52059b47c846e3414bf92182df1b8
 ~~~~~
 # ChatBrief
 
@@ -230,7 +230,7 @@ It never marks messages as read, so your chats stay unread in your own apps.
 | `python -m tg_recap run` | One recap run. Prints the fallback recap, or nothing |
 | `... collect --peek` / `... run --peek` | Test or manual run: same full read, but the window isn't advanced and `state.json` isn't written at all (no window, no chat-title directory); no recap copy is saved. JSON has `"peek": true` |
 | `python -m tg_recap settings show` | Your settings, no IDs |
-| `python -m tg_recap settings set NAME VALUE` | `length`, `include-muted`, `include-archived`, `include-dms`, `collapse-alert-bots`, `timezone`, `priority-keywords`, `frequency`, `daily-hour` |
+| `python -m tg_recap settings set NAME VALUE` | `length`, `include-muted`, `include-archived`, `include-dms`, `collapse-alert-bots`, `only-included-chats`, `timezone`, `priority-keywords`, `frequency`, `daily-hour` |
 | `python -m tg_recap settings chat TITLE include\|skip\|count-only\|default` | Per-chat rule (fuzzy title match; ambiguity is reported) |
 | `python -m tg_recap settings keyword add\|remove WORD` | Priority keywords, flagged first |
 | `python -m tg_recap sample` | Prints a sample recap from fake example data |
@@ -274,7 +274,7 @@ This is an AI agent that reads your chats to write recaps, so before sign-in it 
 
 ## Settings
 
-`~/.tg_recap/settings.json` (0600, folder 0700), validated with defaults: `include_muted` true, `include_archived` false, `include_dms` true, `length` standard, `collapse_alert_bots` true, `priority_keywords` empty, `memecoin_show_ca` true, `memecoin_buy_sol` 10, `memecoin_buy_usd` 2000, `frequency`/`timezone` (stored for the schedule; the code uses the timezone), and per-chat rules stored by an internal salted chat key with the title. Chat titles for matching come from the last recap run (kept in `state.json`, titles only). Raw Telegram IDs are never stored or shown. An older `config.json` is read once if `settings.json` doesn't exist yet. See `docs/sample_recap_v0.1.5.md` for a synthetic example.
+`~/.tg_recap/settings.json` (0600, folder 0700), validated with defaults: `include_muted` true, `include_archived` false, `include_dms` true, `length` standard, `collapse_alert_bots` true, `priority_keywords` empty, `memecoin_show_ca` true, `only_included_chats` false (when on, only chats with an include or count-only rule are read; later-joined chats stay out), `memecoin_buy_sol` 10, `memecoin_buy_usd` 2000, `frequency`/`timezone` (stored for the schedule; the code uses the timezone), and per-chat rules stored by an internal salted chat key with the title. Chat titles for matching come from the last recap run (kept in `state.json`, titles only). Raw Telegram IDs are never stored or shown. An older `config.json` is read once if `settings.json` doesn't exist yet. See `docs/sample_recap_v0.1.5.md` for a synthetic example.
 
 ## Retention (this code's own cache)
 
@@ -843,7 +843,7 @@ DISCLOSURE = (f"{PRODUCT_NAME} is an unofficial app that works alongside Telegra
 ~~~~~
 
 ### file: tg_recap/collect.py
-sha256: 164d16459129c8a60dfcec594a361565a0b604c4eb7c7e1131f6f48d9c89f6d3
+sha256: ff37117bb6955c583cf5b92f32987bf94cb502b86a8728c7a115e6c5314ff865
 ~~~~~
 """Collect recap input from your dialogs (read-only), as structured JSON.
 
@@ -1167,6 +1167,9 @@ async def fetch(client, cfg, state: dict, start: datetime, end: datetime) -> tup
 def _wanted(rec: dict, cfg) -> bool:
     if rec["rule"] == "skip":
         return False
+    if getattr(cfg, "only_included_chats", False):
+        # allow-list mode: chats without an include/count-only rule (including ones joined later) are left out
+        return rec["rule"] in ("include", "count-only")
     if rec["rule"] in ("include", "count-only"):
         return True
     if rec["archived"] and not cfg.include_archived:
@@ -1372,7 +1375,7 @@ async def collect(client, cfg, state: dict, now: datetime | None = None, *,
 ~~~~~
 
 ### file: tg_recap/config.py
-sha256: 466c266643c4eb3942381e5d48386505ff040e3e1d93c7a976ba1c6e588e7ff6
+sha256: f6387a455d529da1736843e436c0aadec96574151c4014ef8c25b208b1603848
 ~~~~~
 """User settings in ~/.tg_recap/settings.json (0600, folder 0700).
 
@@ -1421,6 +1424,7 @@ SCHEMA = {
     "memecoin_buy_usd": ((int, float), "reported USD buy threshold (default 2000)"),
     "memecoin_ticker_stop": (list, "extra tickers to ignore in Memecoin mentions"),
     "memecoin_show_ca": (bool, "show public token CAs in Memecoin mentions (default on)"),
+    "only_included_chats": (bool, "only chats ruled include or count-only are read (default off)"),
 }
 
 
@@ -1445,6 +1449,7 @@ class Config:
     memecoin_buy_usd: float = 2000.0
     memecoin_ticker_stop: list = field(default_factory=list)
     memecoin_show_ca: bool = True
+    only_included_chats: bool = False
 
     def validate(self) -> "Config":
         for name, (typ, _desc) in SCHEMA.items():
@@ -4119,7 +4124,7 @@ def sample_text(now: datetime | None = None, tz: str = "America/Los_Angeles") ->
 ~~~~~
 
 ### file: tg_recap/settings_cli.py
-sha256: c12dffc6b665ed034d7d1d3ed80d37b521556740f196f539014f21ead5df01b1
+sha256: 21bff4df19113c4f06d1dab7b392630de756a389bffca606513f7a96b54509e3
 ~~~~~
 """`settings show | set | chat | keyword` - local only, never contacts Telegram.
 
@@ -4137,7 +4142,8 @@ from . import collect, config
 
 BOOL_FIELDS = {"include-muted": "include_muted", "include-archived": "include_archived",
                "include-dms": "include_dms", "collapse-alert-bots": "collapse_alert_bots",
-               "memecoin-show-ca": "memecoin_show_ca"}
+               "memecoin-show-ca": "memecoin_show_ca",
+               "only-included-chats": "only_included_chats"}
 TRUE = {"on", "true", "yes", "1", "y"}
 FALSE = {"off", "false", "no", "0", "n"}
 NUM_FIELDS = {"memecoin-buy-sol": "memecoin_buy_sol", "memecoin-buy-usd": "memecoin_buy_usd"}
@@ -4179,6 +4185,7 @@ def show_lines(cfg) -> list[str]:
         f"Memecoin buy alerts: {_fmt_sol(cfg.memecoin_buy_sol)} or {_fmt_usd(cfg.memecoin_buy_usd)} (as reported)",
         "Memecoin ticker stoplist: " + (", ".join(cfg.memecoin_ticker_stop) or "none"),
         f"Memecoin contract addresses: {_onoff(cfg.memecoin_show_ca)}",
+        f"Only included chats: {_onoff(cfg.only_included_chats)}",
         "Chat rules: " + ("; ".join(f"{r['title']}: {r['rule']}" for r in rules) if rules else "none"),
     ]
 
@@ -4234,6 +4241,9 @@ def cmd_set(args, out=None, err=None) -> int:
             on = _onoff(getattr(cfg, BOOL_FIELDS[name]))
             if name == "memecoin-show-ca":
                 msg = f"Memecoin contract addresses: {on}."
+            elif name == "only-included-chats":
+                msg = f"Only included chats: {on}" + \
+                    (" (every chat without an include or count-only rule is left out)." if on == "on" else ".")
             else:
                 msg = f"{name.replace('-', ' ').capitalize()}: {on}."
         elif name == "length":

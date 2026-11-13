@@ -320,6 +320,9 @@ async def fetch(client, cfg, state: dict, start: datetime, end: datetime) -> tup
 def _wanted(rec: dict, cfg) -> bool:
     if rec["rule"] == "skip":
         return False
+    if getattr(cfg, "only_included_chats", False):
+        # allow-list mode: chats without an include/count-only rule (including ones joined later) are left out
+        return rec["rule"] in ("include", "count-only")
     if rec["rule"] in ("include", "count-only"):
         return True
     if rec["archived"] and not cfg.include_archived:

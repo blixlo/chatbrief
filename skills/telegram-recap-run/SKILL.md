@@ -66,6 +66,7 @@ Map the owner's words to one command, run it, and reply with the one line it pri
 | "show alert bots in full" / "collapse alert bots" | `settings set collapse-alert-bots off` / `on` |
 | "flag anything about invoices" | `settings keyword add invoice` (remove: `settings keyword remove invoice`) |
 | "hide / show token contract addresses" | `settings set memecoin-show-ca off` / `on` (default on) |
+| "only cover these chats" / "stop covering every other chat" / "cover all my chats again" | first mark each wanted chat with `settings chat "<chat>" include`, then `settings set only-included-chats on` (off: `settings set only-included-chats off`; default off). When on, every chat without an include or count-only rule, including chats joined later, is left out and not read. |
 | "use Berlin time" | `settings set timezone Europe/Berlin` |
 | "send it every 4 hours" / "daily at 9" | see Change frequency in `telegram-recap-setup` |
 

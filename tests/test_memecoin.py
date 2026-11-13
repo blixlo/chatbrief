@@ -513,3 +513,30 @@ def test_settings_memecoin_show_ca_roundtrip(tg_home):
     assert config.load().memecoin_show_ca is True
     shown = "\n".join(settings_cli.show_lines(config.load()))
     assert "Memecoin contract addresses: on" in shown
+
+
+def test_only_included_chats_keeps_other_chats_out_of_memecoin_mentions(tg_home):
+    from conftest import ME_ID, Ent, run
+    from tg_recap.readonly import ReadOnlyClient
+
+    async def nosleep(_):
+        return None
+
+    def build(cfg):
+        sender = Ent(first_name="Ann", id=21)
+        dialogs = [mkdialog(i, name, [Msg(i * 10, "$BONK looks active", ago(30), sender=sender)])
+                   for i, name in ((1, "Alpha"), (2, "Beta"), (3, "Gamma"))]
+        fake = FakeClient(dialogs, me=Ent(first_name="Owner", id=ME_ID))
+        client = ReadOnlyClient(fake, min_interval=0, sleep=nosleep)
+        state = {"salt": "s", "last_recap_at": (NOW - timedelta(hours=12)).isoformat()}
+        return run(C.collect(client, cfg, state, NOW)), dialogs
+
+    d, dialogs = build(Config())
+    assert [m["ticker"] for m in d["memecoin_mentions"]] == ["$BONK"] and d["memecoin_mentions"][0]["chats"] == 3
+    rules = {C.chat_key(x, "s"): {"title": x.name, "rule": "include"} for x in dialogs[:1]}
+    d, _ = build(Config(chat_rules=rules, only_included_chats=True))
+    assert d["memecoin_mentions"] == []  # one included chat is below the 2-chat threshold
+    rules = {C.chat_key(x, "s"): {"title": x.name, "rule": "include"} for x in dialogs[:2]}
+    d, _ = build(Config(chat_rules=rules, only_included_chats=True))
+    row = d["memecoin_mentions"][0]
+    assert row["chats"] == 2 and row["chat_names"] == ["Alpha", "Beta"]

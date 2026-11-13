@@ -142,6 +142,29 @@ def test_collapse_setting_off_and_chat_rules():
     assert "Muted Group" in names(d["conversations"]) and d["also_active"] == []
 
 
+def test_only_included_chats_is_an_allow_list_and_skips_reading_the_rest():
+    dialogs = world()
+    wk, whale = C.chat_key(dialogs[0], "s"), C.chat_key(dialogs[5], "s")
+    rules = {wk: {"title": "Work Group", "rule": "include"}, whale: {"title": "Whale Watch", "rule": "count-only"}}
+    d, fake, _ = collect(world(), Config(chat_rules=rules, only_included_chats=True))
+    assert names(d["conversations"]) == ["Work Group"] and d["count_only"][0]["name"] == "Whale Watch"
+    assert d["also_active"] == [] and d["alert_feeds"] == [] and "Muted Group" not in json.dumps(d)
+    assert fake.calls.count("iter_messages") == 2  # only the two included chats are read
+    # off: everything is covered as before
+    d, fake, _ = collect(world(), Config(chat_rules=rules))
+    assert fake.calls.count("iter_messages") > 2
+    # on with no include rules: nothing is covered
+    d, fake, _ = collect(world(), Config(only_included_chats=True))
+    assert d["conversations"] == [] and d["also_active"] == [] and fake.calls.count("iter_messages") == 0
+    # skip still wins, and a chat that appears later stays out
+    rules[wk]["rule"] = "skip"
+    d, _, _ = collect(world(), Config(chat_rules=rules, only_included_chats=True))
+    assert "Work Group" not in json.dumps(d)
+    late = mkdialog(9, "Late Joined", [Msg(90, "hello there", ago(5), sender=BOB)])
+    d, _, _ = collect(world() + [late], Config(chat_rules=rules, only_included_chats=True))
+    assert "Late Joined" not in json.dumps(d)
+
+
 # --- 4. needs you ---------------------------------------------------------------------
 
 def test_real_replies_and_mentions_only():
