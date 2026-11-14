@@ -126,17 +126,23 @@ def _addr_spans(text: str, addr: str):
 
 def _wallet_context(text: str, addr: str) -> bool:
     t = text or ""
+    if re.search(_WALLET_PATH + r"\S*" + re.escape(addr), t, re.I):
+        return True
     for start, end in _addr_spans(t, addr):
         if _WALLET_LEFT.search(t[:start]) or _WALLET_RIGHT.search(t[end:]):
             return True
     return False
 
 
+_WALLET_PATH = r"/(?:accounts?|profiles?|address(?:es)?|wallets?|users?|portfolio)/"
+
+
 def _in_token_url(text: str, addr: str) -> bool:
     t = text or ""
     for host in _TOKEN_HOSTS:
-        if re.search(re.escape(host) + r"\S*" + re.escape(addr), t, re.I):
-            return True
+        for m in re.finditer(re.escape(host) + r"\S*" + re.escape(addr), t, re.I):
+            if not re.search(_WALLET_PATH, m.group(0), re.I):
+                return True
     return False
 
 
@@ -158,6 +164,58 @@ def token_context(text: str, addr: str, extra=None) -> bool:
         if _TOKEN_LEFT.search(t[:start]) or _near_ticker(t, start, end, extra):
             return True
     return False
+
+
+_B58 = r"[1-9A-HJ-NP-Za-km-z]{32,44}"
+_B58_RE = re.compile(rf"{_B58}")
+_EVM_RE = re.compile(r"0x[a-fA-F0-9]{40}")
+_LINK_RE = re.compile(
+    r"(?<![\w./@-])(?:https?://)?(?:www\.)?(pump\.fun|dexscreener\.com|birdeye\.so|solscan\.io|gmgn\.ai)"
+    r"(/[^\s<>\"'`]*)?",
+    re.I,
+)
+MAX_LINKS = 5
+
+
+def _is_addr(seg: str) -> bool:
+    return bool(_B58_RE.fullmatch(seg) or _EVM_RE.fullmatch(seg))
+
+
+def _token_link(host: str, path: str) -> str | None:
+    """Canonical public token-page URL (no query/fragment/ref) or None."""
+    path = re.split(r"[?#]", path or "", maxsplit=1)[0].rstrip(".,;:!)]}>*_")
+    segs = [x for x in path.split("/") if x]
+    host = host.lower()
+    if host == "pump.fun":
+        if len(segs) == 2 and segs[0].lower() == "coin" and _is_addr(segs[1]):
+            return f"https://pump.fun/coin/{segs[1]}"
+        if len(segs) == 1 and _is_addr(segs[0]):
+            return f"https://pump.fun/{segs[0]}"
+    elif host == "dexscreener.com":
+        if len(segs) == 2 and re.fullmatch(r"[a-z][a-z0-9-]{1,19}", segs[0], re.I) \
+                and re.fullmatch(r"[A-Za-z0-9]{20,66}", segs[1]):
+            return f"https://dexscreener.com/{segs[0].lower()}/{segs[1]}"
+    elif host in ("birdeye.so", "solscan.io"):
+        if len(segs) == 2 and segs[0].lower() == "token" and _is_addr(segs[1]):
+            return f"https://{host}/token/{segs[1]}"
+    elif host == "gmgn.ai":
+        if len(segs) in (2, 3) and segs[-2].lower() == "token":
+            chain = segs[0].lower() if len(segs) == 3 else None
+            if chain is not None and not re.fullmatch(r"[a-z]{2,10}", chain):
+                return None
+            addr = segs[-1].rsplit("_", 1)[-1]  # gmgn puts a referral code before '_'
+            if _is_addr(addr):
+                return f"https://gmgn.ai/{chain + '/' if chain else ''}token/{addr}"
+    return None
+
+
+def token_links_in(text: str) -> list[str]:
+    out: list[str] = []
+    for m in _LINK_RE.finditer(text or ""):
+        link = _token_link(m.group(1), m.group(2) or "")
+        if link and link not in out:
+            out.append(link)
+    return out
 
 
 def token_cas_in(text: str, extra=None) -> list[str]:
@@ -321,9 +379,10 @@ def _hits_from_records(records: list, cfg=None) -> list[dict]:
             group_cas = [ca for ca in all_cas if not _wallet_context(text, ca)]
             show_cas = [ca for ca in group_cas if token_context(text, ca, extra)]
             extracted.append((toks, group_cas, show_cas, parse_buys(text), names_for(text, toks),
-                              _tableish(text, toks)))
+                              _tableish(text, toks),
+                              token_links_in(text + " " + " ".join(m.get("urls") or []))))
         for i, m in enumerate(kept):
-            tickers, cas, show_cas, buys, names, table = extracted[i]
+            tickers, cas, show_cas, buys, names, table, links = extracted[i]
             tickers = _associate(kept, i, cas, tickers, extra)
             if not tickers and not cas:
                 continue
@@ -332,13 +391,15 @@ def _hits_from_records(records: list, cfg=None) -> list[dict]:
             if not tickers and cas:
                 for ca in cas:
                     hits.append({**base, "ticker": None, "name": None, "cas": [ca],
-                                 "show_cas": [ca] if ca in show_cas else [], "buys": buys})
+                                 "show_cas": [ca] if ca in show_cas else [], "buys": buys,
+                                 "links": links})
                 continue
             for tok in tickers:
                 hits.append({**base, "ticker": tok, "name": names.get(tok),
                              "cas": list(cas) if len(tickers) == 1 else [],
                              "show_cas": list(show_cas) if len(tickers) == 1 else [],
-                             "buys": buys if len(tickers) == 1 else []})
+                             "buys": buys if len(tickers) == 1 else [],
+                             "links": links if len(tickers) == 1 else []})
     return hits
 
 
@@ -427,6 +488,9 @@ def _ca_fields(group: list[dict], show_ca: bool) -> dict:
         out["ca"] = top
         out["ca_sightings"] = top_n
         out["other_cas"] = len(counts) - 1
+    if show_ca:
+        out["all_cas"] = [{"ca": ca, "sightings": n} for ca, n in counts.most_common()]
+        out["links"] = [l for l, _ in Counter(l for h in group for l in h.get("links") or []).most_common(MAX_LINKS)]
     return out
 
 

@@ -11,7 +11,7 @@ from tg_recap import __main__ as cli
 from tg_recap.config import Config
 from tg_recap.memecoin import (
     LAST_MEMECOIN_AT, UNNAMED, contracts_in, flagged_buys, format_buy, mentions_from_records,
-    parse_buys, parse_window, tickers_in, token_cas_in,
+    parse_buys, parse_window, tickers_in, token_cas_in, token_links_in,
 )
 from tg_recap.render import header, memecoin_line, render
 from conftest import NOW, FakeClient, Msg, ago, mkdialog
@@ -540,3 +540,121 @@ def test_only_included_chats_keeps_other_chats_out_of_memecoin_mentions(tg_home)
     d, _ = build(Config(chat_rules=rules, only_included_chats=True))
     row = d["memecoin_mentions"][0]
     assert row["chats"] == 2 and row["chat_names"] == ["Alpha", "Beta"]
+
+
+# --- all_cas and links in the JSON rows ------------------------------------------
+
+def _two_chat_recs(a, b):
+    return [rec("Alpha", [msg("Ann", 20, a)]), rec("Beta", [msg("Bob", 10, b)])]
+
+
+def test_all_cas_lists_every_token_context_ca_most_seen_first():
+    recs = _two_chat_recs(f"$PEPE ca {CA1}", f"$PEPE ca {CA2}")
+    recs[1]["messages"].append(msg("Cy", 5, f"$PEPE ca {CA2}", sender="Cy"))
+    row = digest(recs)["memecoin_mentions"][0]
+    assert row["all_cas"] == [{"ca": CA2, "sightings": 2}, {"ca": CA1, "sightings": 1}]
+    assert row["ca"] == CA2 and row["ca_sightings"] == 2 and row["other_cas"] == 1
+    assert row["all_cas"][0]["ca"] == row["ca"]
+    line = memecoin_line(row, digest(recs)["window"])
+    assert "+1 other CA seen" in line and CA1 not in line
+
+
+def test_all_cas_excludes_wallets_and_non_token_context():
+    recs = _two_chat_recs(
+        f"$PEPE ca {CA1} and wallet {WALLET} bought 12 SOL",
+        f"$PEPE {WALLET} bought 12 SOL",
+    )
+    row = digest(recs)["memecoin_mentions"][0]
+    assert [x["ca"] for x in row["all_cas"]] == [CA1]
+    assert WALLET not in json.dumps(row)
+
+
+def test_solscan_account_and_birdeye_profile_links_are_not_token_context():
+    recs = _two_chat_recs(
+        f"$PEPE https://solscan.io/account/{WALLET}",
+        f"$PEPE https://birdeye.so/profile/{WALLET}?chain=solana",
+    )
+    row = digest(recs)["memecoin_mentions"][0]
+    assert row["all_cas"] == [] and "ca" not in row and row["links"] == []
+    assert WALLET not in json.dumps(row)
+
+
+def test_links_only_public_token_pages_without_query_or_refs():
+    text = (
+        f"$PEPE https://pump.fun/coin/{CA1}?ref=abc123 "
+        f"https://dexscreener.com/solana/{CA2}?utm=x#frag "
+        f"https://birdeye.so/token/{CA1}?chain=solana "
+        f"https://solscan.io/token/{CA1} "
+        f"https://gmgn.ai/sol/token/REFCODE9_{CA1}?ref=zzz "
+        f"https://t.me/somegroup/123 https://t.me/+InviteHash "
+        f"https://solscan.io/account/{WALLET} https://gmgn.ai/sol/address/{WALLET} "
+        f"https://birdeye.so/profile/{WALLET} https://pump.fun/profile/someone "
+        "https://example.com/token/x"
+    )
+    recs = _two_chat_recs(text, f"again $PEPE https://pump.fun/coin/{CA1}")
+    row = digest(recs)["memecoin_mentions"][0]
+    assert row["links"] == [
+        f"https://pump.fun/coin/{CA1}",
+        f"https://dexscreener.com/solana/{CA2}",
+        f"https://birdeye.so/token/{CA1}",
+        f"https://solscan.io/token/{CA1}",
+        f"https://gmgn.ai/sol/token/{CA1}",
+    ]
+    blob = json.dumps(row)
+    for bad in ("?", "#", "ref", "t.me", "REFCODE", "utm", "account", "profile", WALLET):
+        assert bad not in blob
+
+
+def test_links_deduplicated_capped_and_stay_with_their_coin():
+    addrs = [f"FAKE{i}" + "1" * (39 - len(str(i))) for i in range(8)]
+    links = " ".join(f"https://pump.fun/coin/{a}" for a in addrs)
+    recs = _two_chat_recs(f"$PEPE {links}", f"$PEPE {links}")
+    recs[0]["messages"].append(msg("Zed", 3, f"$WIF $BONK https://pump.fun/coin/{CA2}"))
+    rows = {r["ticker"]: r for r in digest(recs)["memecoin_mentions"]}
+    assert len(rows["$PEPE"]["links"]) == 5 == len(set(rows["$PEPE"]["links"]))
+    assert all(CA2 not in l for l in rows["$PEPE"]["links"])
+
+
+def test_links_for_coin_without_ca_and_helper_edge_cases():
+    recs = _two_chat_recs("$FLOAT https://pump.fun/coin/" + PUMP, "$FLOAT strong")
+    row = digest(recs)["memecoin_mentions"][0]
+    assert row["links"] == [f"https://pump.fun/coin/{PUMP}"]
+    assert token_links_in("see pump.fun/coin/" + CA1 + ".") == [f"https://pump.fun/coin/{CA1}"]
+    assert token_links_in("notpump.fun/coin/" + CA1) == []
+    assert token_links_in("https://dexscreener.com/new-pairs") == []
+    assert token_links_in("https://gmgn.ai/sol/token/short") == []
+
+
+def test_all_cas_and_links_hidden_when_show_ca_off_and_not_in_rendered_text():
+    recs = _two_chat_recs(f"$PEPE ca {CA1} https://pump.fun/coin/{CA1}", f"$PEPE ca {CA2}")
+    d = digest(recs, Config(memecoin_show_ca=False))
+    row = d["memecoin_mentions"][0]
+    assert "all_cas" not in row and "links" not in row and "ca" not in row
+    d = digest(recs)
+    text = render(d)
+    assert f"pump.fun/coin/{CA1}" not in text and CA2 not in text.replace("[address removed]", "")
+    # the JSON the runner prints keeps them intact (no redact pass on structured fields)
+    out = io.StringIO()
+    out.write(json.dumps(d["memecoin_mentions"]))
+    assert f"https://pump.fun/coin/{CA1}" in out.getvalue() and CA2 in out.getvalue()
+
+
+def test_hidden_hyperlink_targets_feed_links_but_not_counts_or_text():
+    first = msg("Bot", 20, "$PEPE trending", bot=True)
+    first["urls"] = [f"https://dexscreener.com/solana/{CA2}?ref=zzz", "https://t.me/+InviteHash",
+                     f"https://pump.fun/coin/{CA1}?r=abc"]
+    d = digest([rec("Alpha", [first]), rec("Beta", [msg("Bob", 10, "$PEPE again")])])
+    row = d["memecoin_mentions"][0]
+    assert row["links"] == [f"https://dexscreener.com/solana/{CA2}", f"https://pump.fun/coin/{CA1}"]
+    assert row["all_cas"] == []  # hidden link targets never count as CA sightings
+    assert "InviteHash" not in json.dumps(d) and "ref=" not in json.dumps(d["memecoin_mentions"])
+
+
+def test_collect_reads_text_link_entities_into_urls():
+    from types import SimpleNamespace as NS_
+    link = type("MessageEntityTextUrl", (), {})()
+    link.url = f"https://solscan.io/token/{CA1}"
+    other = type("MessageEntityBold", (), {})()
+    other.url = "https://example.com"
+    assert C._entity_urls(NS_(entities=[link, other])) == [f"https://solscan.io/token/{CA1}"]
+    assert C._entity_urls(NS_(entities=None)) == []

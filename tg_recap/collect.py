@@ -216,6 +216,16 @@ def window_for(state: dict, cfg, now: datetime | None = None, *, hours: int | No
 
 # --- fetch --------------------------------------------------------------------------
 
+def _entity_urls(m) -> list[str]:
+    """Hidden hyperlink targets; only memecoin.token_links_in reads them."""
+    out = []
+    for e in getattr(m, "entities", None) or []:
+        url = getattr(e, "url", None)
+        if type(e).__name__ == "MessageEntityTextUrl" and isinstance(url, str) and url:
+            out.append(url)
+    return out[:20]
+
+
 def _mentions_me(m, text: str, me_id, handle: str | None) -> bool:
     for e in getattr(m, "entities", None) or []:
         kind = type(e).__name__
@@ -307,6 +317,7 @@ async def fetch(client, cfg, state: dict, start: datetime, end: datetime) -> tup
                 "who": "You" if by_me else display_name(sender if sender is not None else dialog.entity),
                 "sender": str(getattr(m, "sender_id", None) or display_name(sender)),
                 "ts": _aware(m.date), "text": text, "by_me": by_me or own_post, "bot": is_bot,
+                "urls": _entity_urls(m),
                 "reply_to_me": person and getattr(m, "reply_to_msg_id", None) in mine,
                 "mentions_me": not (by_me or own_post or is_bot) and _mentions_me(m, text, me_id, handle),
             })
